@@ -1,8 +1,8 @@
 import tweepy
  
 # Add Twitter API key and secret
-consumer_key = "6mLmVZTWJ73BRvtnNx4TF3D34"
-consumer_secret = "DGUrxRVyDUziuWhXMRzMvMLb6DUtg9om9AhxmPT7naQ6oq8HLn"
+consumer_key = "***"
+consumer_secret = "****"
 
 #auth = tweepy.OAuth2AppHandler(consumer_key, consumer_secret)
 #auth = tweepy.AppAuthHandler(consumer_key, consumer_secret)
