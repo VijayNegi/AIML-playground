@@ -86,24 +86,30 @@ def main():
     # Load the inpainting pipelines
     print(f"\nLoading models: {', '.join(args.models)}")
     print("=" * 50)
-    pipelines = load_pipelines(args.models)
+    pipelines, load_times = load_pipelines(args.models)
     
     if not pipelines:
         print("Error: No models were successfully loaded!")
         return
     
     print(f"\n✓ Loaded {len(pipelines)} model(s)")
+    
+    # Display load times
+    print("\nModel Load Times:")
+    for model_name, load_time in load_times.items():
+        print(f"  {model_name}: {load_time:.2f}s")
     print("=" * 50)
     
     # Perform inpainting with each model
     results = {}
+    performance_logs = {}
     print(f"\nInpainting with prompt: '{args.prompt}'")
     print("=" * 50)
     
     for model_name, pipe in pipelines.items():
         print(f"\nRunning {model_name}...")
         try:
-            result = inpaint(
+            result, perf = inpaint(
                 pipe=pipe,
                 image=image,
                 mask=mask,
@@ -114,6 +120,13 @@ def main():
                 seed=args.seed,
             )
             results[model_name] = result
+            performance_logs[model_name] = perf
+            
+            # Display performance metrics
+            print(f"  Preprocessing: {perf['preprocessing_time']:.3f}s")
+            print(f"  Inference: {perf['inference_time']:.2f}s")
+            print(f"  Total: {perf['total_time']:.2f}s")
+            print(f"  Image size: {perf['image_size']}")
             
             # Save individual result
             output_path = args.output
@@ -173,6 +186,20 @@ def main():
             
             grid.save("comparison_grid.png")
             print("Grid comparison saved to 'comparison_grid.png'")
+    
+    # Display performance summary
+    if performance_logs:
+        print(f"\n{'=' * 50}")
+        print("Performance Summary")
+        print("=" * 50)
+        for model_name, perf in performance_logs.items():
+            load_time = load_times.get(model_name, 0)
+            steps_per_sec = perf["num_steps"] / perf["inference_time"] if perf["inference_time"] > 0 else 0
+            
+            print(f"\n{model_name}:")
+            print(f"  Load time: {load_time:.2f}s")
+            print(f"  Inference time: {perf['inference_time']:.2f}s")
+            print(f"  Steps/sec: {steps_per_sec:.2f}")
 
 
 if __name__ == "__main__":

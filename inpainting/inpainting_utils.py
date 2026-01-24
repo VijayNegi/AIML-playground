@@ -11,6 +11,7 @@ Requirements:
 import argparse
 import cv2
 import numpy as np
+import time
 import torch
 from diffusers import AutoPipelineForInpainting
 from PIL import Image, ImageDraw
@@ -120,8 +121,10 @@ def load_pipeline(model_id: str = "runwayml/stable-diffusion-inpainting"):
         model_id: HuggingFace model identifier
         
     Returns:
-        Configured inpainting pipeline
+        Tuple of (pipeline, load_time_seconds)
     """
+    start_time = time.time()
+    
     # Determine device and dtype
     if torch.cuda.is_available():
         device = "cuda"
@@ -149,7 +152,10 @@ def load_pipeline(model_id: str = "runwayml/stable-diffusion-inpainting"):
         except Exception:
             pass  # xformers not available
     
-    return pipe
+    load_time = time.time() - start_time
+    print(f"✓ Loaded in {load_time:.2f}s")
+    
+    return pipe, load_time
 
 
 def load_pipelines(model_names: list):
@@ -160,9 +166,10 @@ def load_pipelines(model_names: list):
         model_names: List of model names (keys from AVAILABLE_MODELS) or ["all"]
         
     Returns:
-        Dictionary mapping model names to their pipelines
+        Tuple of (pipelines_dict, load_times_dict)
     """
     pipelines = {}
+    load_times = {}
     
     # Handle "all" keyword
     if "all" in model_names:
@@ -175,12 +182,14 @@ def load_pipelines(model_names: list):
         
         model_id = AVAILABLE_MODELS[model_name]
         try:
-            pipelines[model_name] = load_pipeline(model_id)
+            pipe, load_time = load_pipeline(model_id)
+            pipelines[model_name] = pipe
+            load_times[model_name] = load_time
             print(f"✓ Loaded {model_name}")
         except Exception as e:
             print(f"✗ Failed to load {model_name}: {e}")
     
-    return pipelines
+    return pipelines, load_times
 
 
 def create_sample_mask(image: Image.Image, mask_region: tuple) -> Image.Image:
@@ -332,9 +341,9 @@ def inpaint(
     num_inference_steps: int = 50,
     guidance_scale: float = 7.5,
     seed: int = None,
-) -> Image.Image:
+):
     """
-    Perform inpainting on an image.
+    Perform inpainting on an image with performance logging.
     
     Args:
         pipe: The inpainting pipeline
@@ -347,14 +356,19 @@ def inpaint(
         seed: Random seed for reproducibility
         
     Returns:
-        Inpainted image
+        Tuple of (inpainted_image, performance_dict)
     """
+    perf = {}
+    total_start = time.time()
+    
     # Set seed for reproducibility
     generator = None
     if seed is not None:
         generator = torch.Generator(device=pipe.device).manual_seed(seed)
     
     # Ensure images are in RGB mode and correct size
+    # Preprocessing
+    prep_start = time.time()
     image = image.convert("RGB")
     mask = mask.convert("RGB")
     
@@ -367,7 +381,10 @@ def inpaint(
         image = image.resize((new_width, new_height), Image.LANCZOS)
         mask = mask.resize((new_width, new_height), Image.NEAREST)
     
+    perf['preprocessing_time'] = time.time() - prep_start
+    
     # Run inpainting
+    inference_start = time.time()
     result = pipe(
         prompt=prompt,
         negative_prompt=negative_prompt,
@@ -377,5 +394,11 @@ def inpaint(
         guidance_scale=guidance_scale,
         generator=generator,
     ).images[0]
+    perf['inference_time'] = time.time() - inference_start
     
-    return result
+    perf['total_time'] = time.time() - total_start
+    perf['image_size'] = f"{new_width}x{new_height}"
+    perf['num_steps'] = num_inference_steps
+    perf['guidance_scale'] = guidance_scale
+    
+    return result, perf
