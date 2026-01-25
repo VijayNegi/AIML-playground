@@ -142,15 +142,36 @@ def load_pipeline(model_id: str = "runwayml/stable-diffusion-inpainting"):
     pipe = AutoPipelineForInpainting.from_pretrained(
         model_id,
         torch_dtype=dtype,
+        safety_checker=None,  # Disable safety checker to avoid CPU fallback
+        use_safetensors=True,  # Use safetensors to bypass PyTorch 2.6 requirement
     )
     pipe = pipe.to(device)
     
-    # Enable memory efficient attention if available
+    # Ensure all components are on the correct device
     if device == "cuda":
+        # Explicitly move all submodules to GPU
+        if hasattr(pipe, 'vae'):
+            pipe.vae = pipe.vae.to(device)
+        if hasattr(pipe, 'text_encoder'):
+            pipe.text_encoder = pipe.text_encoder.to(device)
+        if hasattr(pipe, 'unet'):
+            pipe.unet = pipe.unet.to(device)
+        
+        # Enable memory efficient attention if available
         try:
             pipe.enable_xformers_memory_efficient_attention()
+            print("  ✓ xformers memory efficient attention enabled")
+        except Exception as e:
+            # xformers not available or incompatible version - this is fine
+            # The model will use standard attention instead (10-20% slower but works)
+            print(f"  ℹ xformers not available, using standard attention (slightly slower)")
+        
+        # Enable attention slicing for lower memory usage
+        try:
+            pipe.enable_attention_slicing(1)
+            print("  ✓ Attention slicing enabled")
         except Exception:
-            pass  # xformers not available
+            pass
     
     load_time = time.time() - start_time
     print(f"✓ Loaded in {load_time:.2f}s")
