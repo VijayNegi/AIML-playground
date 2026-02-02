@@ -353,6 +353,125 @@ def create_mask_interactive(image_path: str, brush_size: int = 20) -> np.ndarray
     return mask
 
 
+def normalize_image_heights(
+    images: list,
+    target_height: int = None,
+) -> list:
+    """
+    Resize multiple images to have the same height while preserving aspect ratios.
+    
+    This is essential for horizontal collages where images need to align vertically.
+    Each image is scaled proportionally so heights match, widths vary based on
+    original aspect ratios.
+    
+    Args:
+        images: List of PIL Image objects
+        target_height: Desired height in pixels. If None, uses the minimum height
+                      among all images to avoid upscaling.
+                      
+    Returns:
+        List of resized PIL Images, all with the same height
+        
+    Example:
+        >>> img1 = Image.open("photo1.jpg")  # 800x600
+        >>> img2 = Image.open("photo2.jpg")  # 1200x900
+        >>> normalized = normalize_image_heights([img1, img2], target_height=400)
+        >>> # img1 becomes 533x400, img2 becomes 533x400
+    """
+    if not images:
+        return []
+    
+    # Determine target height if not specified
+    if target_height is None:
+        target_height = min(img.height for img in images)
+    
+    resized_images = []
+    for img in images:
+        # Calculate new width to preserve aspect ratio
+        aspect_ratio = img.width / img.height
+        new_width = int(target_height * aspect_ratio)
+        
+        # Resize using high-quality LANCZOS resampling
+        resized = img.resize((new_width, target_height), Image.LANCZOS)
+        resized_images.append(resized)
+    
+    return resized_images
+
+
+def create_blend_mask(
+    canvas_size: tuple,
+    gap_x_start: int,
+    gap_width: int,
+    feather: int = 30,
+) -> Image.Image:
+    """
+    Create a gradient blend mask for the gap region between two images.
+    
+    The mask uses feathering (soft edges) to create smooth transitions.
+    This helps the AI inpainting blend naturally with surrounding pixels
+    rather than creating hard seams.
+    
+    Mask values:
+        - White (255): Areas to be inpainted (the gap)
+        - Black (0): Areas to keep unchanged
+        - Gray gradients: Feathered transition zones
+    
+    Args:
+        canvas_size: Tuple of (width, height) for the full canvas
+        gap_x_start: X coordinate where the gap begins
+        gap_width: Width of the gap in pixels
+        feather: Size of the gradient feather on each edge (default: 30px)
+        
+    Returns:
+        PIL Image mask in RGB mode (white=inpaint, black=keep)
+        
+    Visual representation:
+        |  Image 1  |<-feather->|  GAP  |<-feather->|  Image 2  |
+        |  BLACK    |  GRADIENT | WHITE |  GRADIENT |  BLACK    |
+    """
+    width, height = canvas_size
+    
+    # Create a grayscale mask
+    mask = Image.new("L", canvas_size, 0)  # Start with all black (keep)
+    
+    # Convert to numpy for easier gradient creation
+    mask_np = np.array(mask, dtype=np.float32)
+    
+    # Define the gap region boundaries
+    gap_x_end = gap_x_start + gap_width
+    
+    # Left feather zone: gradient from black to white
+    feather_left_start = max(0, gap_x_start - feather)
+    feather_left_end = gap_x_start
+    
+    # Right feather zone: gradient from white to black  
+    feather_right_start = gap_x_end
+    feather_right_end = min(width, gap_x_end + feather)
+    
+    # Fill the solid white gap region
+    mask_np[:, gap_x_start:gap_x_end] = 255
+    
+    # Create left feather gradient (0 -> 255)
+    if feather_left_end > feather_left_start:
+        for x in range(feather_left_start, feather_left_end):
+            # Linear interpolation from 0 to 255
+            t = (x - feather_left_start) / (feather_left_end - feather_left_start)
+            mask_np[:, x] = int(255 * t)
+    
+    # Create right feather gradient (255 -> 0)
+    if feather_right_end > feather_right_start:
+        for x in range(feather_right_start, feather_right_end):
+            # Linear interpolation from 255 to 0
+            t = (x - feather_right_start) / (feather_right_end - feather_right_start)
+            mask_np[:, x] = int(255 * (1 - t))
+    
+    # Convert back to PIL Image and then to RGB (required by inpainting pipeline)
+    mask = Image.fromarray(mask_np.astype(np.uint8), mode="L")
+    mask_rgb = mask.convert("RGB")
+    
+    return mask_rgb
+
+
 def inpaint(
     pipe,
     image: Image.Image,
@@ -394,9 +513,10 @@ def inpaint(
     mask = mask.convert("RGB")
     
     # Resize to be divisible by 8 (required by SD)
+    # Round UP to preserve image content (avoid cutting off edges)
     width, height = image.size
-    new_width = (width // 8) * 8
-    new_height = (height // 8) * 8
+    new_width = ((width + 7) // 8) * 8
+    new_height = ((height + 7) // 8) * 8
     
     if (new_width, new_height) != (width, height):
         image = image.resize((new_width, new_height), Image.LANCZOS)
