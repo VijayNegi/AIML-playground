@@ -43,7 +43,8 @@ from PIL import Image
 from inpainting_utils import (
     AVAILABLE_MODELS,
     load_pipeline,
-    inpaint,
+    
+    inpaint_crop_and_patch,
     normalize_image_heights,
     create_blend_mask,
 )
@@ -273,14 +274,14 @@ def main():
     pipe, load_time = load_pipeline(model_id)
     print(f"Model loaded in {load_time:.2f}s")
     
-    # Perform inpainting
-    print(f"\nInpainting the gap region...")
+    # Perform inpainting using crop-and-patch (no resizing, max 1024x1024 crop)
+    print(f"\nInpainting the gap region (crop-and-patch mode)...")
     print(f"  Prompt: '{args.prompt}'")
     print(f"  Negative: '{args.negative_prompt}'")
     print(f"  Steps: {args.steps}, Guidance: {args.guidance_scale}, Seed: {args.seed}")
     print("-" * 40)
     
-    result, perf = inpaint(
+    result, perf = inpaint_crop_and_patch(
         pipe=pipe,
         image=canvas,
         mask=mask,
@@ -289,6 +290,7 @@ def main():
         num_inference_steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
+        max_crop_size=1024,  # SDXL optimal size
     )
     
     # Save the result
@@ -299,8 +301,11 @@ def main():
     print(f"\nPerformance:")
     print(f"  Preprocessing: {perf['preprocessing_time']:.3f}s")
     print(f"  Inference: {perf['inference_time']:.2f}s")
+    if 'patch_time' in perf:
+        print(f"  Patch back: {perf['patch_time']:.3f}s")
     print(f"  Total: {perf['total_time']:.2f}s")
-    print(f"  Output size: {perf['image_size']}")
+    print(f"  Original canvas: {perf.get('original_size', 'N/A')}")
+    print(f"  Crop sent to model: {perf.get('crop_size', 'N/A')}")
     
     # Create comparison image
     comparison_width = canvas.size[0]
