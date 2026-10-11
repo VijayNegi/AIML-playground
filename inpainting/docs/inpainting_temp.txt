@@ -1,0 +1,328 @@
+# Seamless Collage v2 - Multi-Image & Flexible Layouts
+
+## Overview
+
+Extend the MVP (2-image horizontal blend) to support:
+
+- **N images** (3, 4, 5, ... images)
+- **Multiple layouts** (horizontal strip, vertical strip, grid)
+- **Auto-layout** suggestions based on image count and dimensions
+
+---
+
+## Prerequisites
+
+Complete MVP first:
+
+- `inpainting/collage.py` - basic 2-image horizontal blend working
+- `inpainting/inpainting_utils.py` - blend mask utilities
+
+---
+
+## Learning Track
+
+### 1. Image Composition and Layout Algorithms
+
+**What to learn:**
+
+- How to calculate optimal image placement on a canvas
+- Aspect ratio preservation strategies
+- Grid packing algorithms (bin packing basics)
+
+**Key terms:**
+
+| Term | Meaning |
+
+|------|---------|
+
+| **Aspect Ratio** | Width/height ratio - must preserve when resizing |
+
+| **Canvas** | The target output image dimensions |
+
+| **Bin Packing** | Algorithm to fit rectangles efficiently in a space |
+
+| **Justified Layout** | Like Google Photos - variable widths, same row height |
+
+**Recommended reading:**
+
+- Flickr Justified Layout: `https://github.com/flickr/justified-layout`
+- CSS Grid concepts (transferable to image layouts)
+
+---
+
+### 2. Multi-Region Masking Strategies
+
+**What to learn:**
+
+- Handling multiple blend zones (not just one gap)
+- T-junctions and cross junctions in grids
+- Prioritizing which regions to inpaint first (or all at once?)
+
+**Key concepts:**
+
+```
+Horizontal (3 images):
+┌─────┬─────┬─────┐
+│ A   │ B   │ C   │
+│     │     │     │
+└─────┴─────┴─────┘
+      ↑     ↑
+    gap1   gap2  (2 vertical blend zones)
+
+Grid (4 images, 2x2):
+┌─────┬─────┐
+│ A   │ B   │
+├─────┼─────┤
+│ C   │ D   │
+└─────┴─────┘
+      ↑
+   cross junction (4-way blend needed)
+```
+
+**Challenge:** Grid layouts have cross-junctions where 4 images meet - requires special handling.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph input [Input]
+        Images[N Images]
+        LayoutChoice[Layout Selection]
+    end
+    
+    subgraph layout [Layout Engine]
+        Auto[Auto-Detect Layout]
+        Horizontal[Horizontal Strip]
+        Vertical[Vertical Strip]
+        Grid[Grid Layout]
+    end
+    
+    subgraph process [Processing]
+        Normalize[Normalize Sizes]
+        Canvas[Create Canvas]
+        Place[Place Images]
+        MultiMask[Generate Multi-Zone Mask]
+    end
+    
+    subgraph inpaint [Inpainting]
+        Sequential[Sequential Inpaint]
+        AllAtOnce[Single Pass Inpaint]
+    end
+    
+    subgraph output [Output]
+        Result[Seamless Collage]
+    end
+    
+    Images --> Auto
+    LayoutChoice --> Auto
+    Auto --> Horizontal
+    Auto --> Vertical
+    Auto --> Grid
+    
+    Horizontal --> Normalize
+    Vertical --> Normalize
+    Grid --> Normalize
+    
+    Normalize --> Canvas
+    Canvas --> Place
+    Place --> MultiMask
+    MultiMask --> Sequential
+    MultiMask --> AllAtOnce
+    Sequential --> Result
+    AllAtOnce --> Result
+```
+
+---
+
+## Supported Layouts
+
+### 1. Horizontal Strip
+
+```
+┌────┬────┬────┬────┐
+│ 1  │ 2  │ 3  │ 4  │
+└────┴────┴────┴────┘
+```
+
+- All images same height
+- Variable widths (preserve aspect ratio)
+- N-1 vertical blend zones
+
+### 2. Vertical Strip
+
+```
+┌────────┐
+│   1    │
+├────────┤
+│   2    │
+├────────┤
+│   3    │
+└────────┘
+```
+
+- All images same width
+- Variable heights
+- N-1 horizontal blend zones
+
+### 3. Grid Layout
+
+```
+2x2:          2x3:           3x3:
+┌───┬───┐     ┌───┬───┐      ┌───┬───┬───┐
+│ 1 │ 2 │     │ 1 │ 2 │      │ 1 │ 2 │ 3 │
+├───┼───┤     ├───┼───┤      ├───┼───┼───┤
+│ 3 │ 4 │     │ 3 │ 4 │      │ 4 │ 5 │ 6 │
+└───┴───┘     ├───┼───┤      ├───┼───┼───┤
+              │ 5 │ 6 │      │ 7 │ 8 │ 9 │
+              └───┴───┘      └───┴───┴───┘
+```
+
+- Uniform cell sizes
+- Cross-junction blending
+- Rows × Cols configurable
+
+---
+
+## Implementation Plan
+
+### Phase 1: Layout Engine
+
+Create `LayoutEngine` class in `inpainting/layout_engine.py`:
+
+```python
+class LayoutEngine:
+    """Calculates image positions for various layout types."""
+    
+    def __init__(self, images: List[Image], layout: str, gap: int = 80):
+        self.images = images
+        self.layout = layout  # "horizontal", "vertical", "grid", "auto"
+        self.gap = gap
+    
+    def calculate(self) -> LayoutResult:
+        """Returns canvas size and image positions."""
+        pass
+    
+    def auto_detect_layout(self) -> str:
+        """Suggest best layout based on image count and aspect ratios."""
+        pass
+```
+
+**LayoutResult dataclass:**
+
+```python
+@dataclass
+class LayoutResult:
+    canvas_width: int
+    canvas_height: int
+    positions: List[Tuple[int, int]]  # (x, y) for each image
+    blend_zones: List[BlendZone]      # regions to inpaint
+```
+
+### Phase 2: Multi-Zone Mask Generator
+
+Extend `inpainting_utils.py`:
+
+```python
+def create_multi_zone_mask(
+    canvas_size: Tuple[int, int],
+    blend_zones: List[BlendZone],
+    feather: int = 30
+) -> Image:
+    """Generate mask with multiple blend regions."""
+    pass
+```
+
+**BlendZone types:**
+
+- `VerticalGap` - between horizontally adjacent images
+- `HorizontalGap` - between vertically adjacent images  
+- `CrossJunction` - where 4 images meet (grid only)
+
+### Phase 3: Inpainting Strategy
+
+Two approaches to evaluate:
+
+| Approach | Pros | Cons |
+
+|----------|------|------|
+
+| **All-at-once** | Single inference, consistent style | Large mask area, may lose coherence |
+
+| **Sequential** | Smaller regions, better control | Multiple inferences, potential inconsistency |
+
+**Recommendation:** Start with all-at-once, add sequential as option.
+
+### Phase 4: Extended CLI
+
+```bash
+# Horizontal strip (default for 2-3 images)
+python collage.py --images a.jpg b.jpg c.jpg --layout horizontal
+
+# Vertical strip  
+python collage.py --images a.jpg b.jpg c.jpg --layout vertical
+
+# Grid (auto-calculates rows/cols)
+python collage.py --images a.jpg b.jpg c.jpg d.jpg --layout grid
+
+# Auto-detect best layout
+python collage.py --images a.jpg b.jpg c.jpg d.jpg --layout auto
+
+# Specify grid dimensions
+python collage.py --images *.jpg --layout grid --rows 2 --cols 3
+```
+
+---
+
+## Auto-Layout Logic
+
+```python
+def auto_detect_layout(images: List[Image]) -> str:
+    n = len(images)
+    avg_aspect = mean([img.width / img.height for img in images])
+    
+    if n == 2:
+        return "horizontal"  # Classic side-by-side
+    elif n == 3:
+        return "horizontal" if avg_aspect > 1 else "vertical"
+    elif n == 4:
+        return "grid"  # 2x2 is natural
+    elif n in [6, 9]:
+        return "grid"  # 2x3, 3x3
+    else:
+        return "horizontal"  # Default fallback
+```
+
+---
+
+## File Changes Summary
+
+| File | Action |
+
+|------|--------|
+
+| `inpainting/layout_engine.py` | Create new (layout calculations) |
+
+| `inpainting/inpainting_utils.py` | Add multi-zone mask generator |
+
+| `inpainting/collage.py` | Extend CLI, integrate LayoutEngine |
+
+---
+
+## Milestone Deliverables
+
+- [ ] Support 2-9 images in a single collage
+- [ ] Three layout options: horizontal, vertical, grid
+- [ ] Auto-layout detection
+- [ ] Multi-zone seamless blending
+- [ ] Cross-junction handling for grids
+
+---
+
+## Future Considerations (v3+)
+
+- **Freeform layouts** - drag-and-drop positioning
+- **Masonry/Pinterest layout** - variable cell sizes
+- **Smart cropping** - auto-detect subjects, crop intelligently
+- **Style consistency** - match colors/lighting across images before blending
