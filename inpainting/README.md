@@ -62,7 +62,37 @@ the denoising step directory; choose a fresh directory to avoid overwriting step
 Other scripts retain their existing output paths. JSON records settings, not
 copies of inputs or a locked software environment; preserve samples separately.
 
-Aim integration remains deferred. Check run logging without GPU inference:
+## Aim tracking
+
+Every completed collage run is tracked in Aim. Activate the virtual environment
+first and install dependencies:
+
+```bash
+source ../.venv/bin/activate
+python -m pip install -r requirements.txt
+python collage.py \
+  --images samples/split_main_1024_left.png samples/split_main_1024_right.png \
+  --prompt "a green landscape" --gap 80
+aim up --repo . --host 127.0.0.1
+```
+
+Open the local URL printed by Aim. The repository is stored in `inpainting/.aim/`,
+regardless of the working directory used to launch the Python script. Run the
+`aim up` command from `inpainting/`.
+
+Aim mirrors settings, numeric metrics, output, and comparison after local files
+are saved. Its run name matches the folder name, and `run_dir` records the
+absolute output location. Aim failure prints a warning without discarding local
+results. No tracking flag is required.
+
+Only completed runs are sent to Aim; failed inference remains recorded locally
+through `params.json`. System/environment and terminal-log capture are disabled.
+Aim stores image copies, so back up both `runs/` and `.aim/`; neither is tracked
+by Git. Existing runs are not automatically imported.
+
+## Checks
+
+Check run logging without GPU inference:
 
 ```bash
 source ../.venv/bin/activate

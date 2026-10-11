@@ -7,3 +7,4 @@ safetensors
 numpy
 Pillow
 opencv-python
+aim>=3,<4

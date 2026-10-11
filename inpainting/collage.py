@@ -185,6 +185,7 @@ Examples:
         default=1,
         help="Save every N steps (default: 1 = every step, use 5 for every 5th)"
     )
+
     
     return parser.parse_args()
 
@@ -275,6 +276,36 @@ def prepare_run(args):
         json.dump(vars(args), file, indent=2)
         file.write("\n")
     return run_dir, comparison_path
+
+
+def track_aim_run(args, run_dir, perf, result, comparison):
+    """Mirror a completed local run into Aim without risking saved results."""
+    run = None
+    try:
+        from aim import Run, Image as AimImage
+
+        run = Run(repo=str(Path(__file__).resolve().parent), experiment="collage",
+                  system_tracking_interval=None, log_system_params=False,
+                  capture_terminal_logs=False)
+        run.name = run_dir.name
+        run["params"] = vars(args)
+        run["run_id"] = run_dir.name
+        run["run_dir"] = str(run_dir.resolve())
+        run["metrics"] = perf
+        for name, value in perf.items():
+            if isinstance(value, (int, float)):
+                run.track(value, name=name, step=0)
+        run.track(AimImage(result), name="output", step=0)
+        run.track(AimImage(comparison), name="comparison", step=0)
+        print(f"Aim run: {run.hash}")
+    except Exception as error:
+        print(f"Warning: Aim tracking failed: {error}. Local results are saved in {run_dir}", file=sys.stderr)
+    finally:
+        if run is not None:
+            try:
+                run.close()
+            except Exception as error:
+                print(f"Warning: Aim close failed: {error}", file=sys.stderr)
 
 
 def main():
@@ -386,6 +417,8 @@ def main():
     
     comparison.save(comparison_path)
     print(f"  Comparison saved to: {comparison_path}")
+
+    track_aim_run(args, run_dir, perf, result, comparison)
     
     print("\n" + "=" * 60)
     print("Done!")

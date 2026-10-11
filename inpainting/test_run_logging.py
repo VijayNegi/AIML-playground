@@ -6,8 +6,9 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
@@ -16,6 +17,42 @@ from inpainting_utils import inpaint_crop_and_patch
 
 
 class RunLoggingTests(unittest.TestCase):
+    def test_aim_tracks_params_metrics_images_and_closes(self):
+        run = MagicMock()
+        aim = types.ModuleType("aim")
+        aim.Run = MagicMock(return_value=run)
+        aim.Image = MagicMock(side_effect=lambda image: image)
+        args = argparse.Namespace(seed=42)
+        image = Image.new("RGB", (8, 8))
+        with patch.dict("sys.modules", {"aim": aim}), redirect_stdout(io.StringIO()):
+            collage.track_aim_run(args, Path("runs/example"),
+                                  {"inference_time": 1.2, "crop_bbox": [0, 0, 8, 8]}, image, image)
+        self.assertEqual(run.name, "example")
+        run.__setitem__.assert_any_call("params", vars(args))
+        run.track.assert_any_call(1.2, name="inference_time", step=0)
+        run.track.assert_any_call(image, name="output", step=0)
+        run.track.assert_any_call(image, name="comparison", step=0)
+        self.assertEqual(run.track.call_count, 3)
+        run.close.assert_called_once()
+
+    def test_aim_failure_warns_and_closes(self):
+        run = MagicMock()
+        run.track.side_effect = RuntimeError("storage unavailable")
+        aim = types.ModuleType("aim")
+        aim.Run = MagicMock(return_value=run)
+        aim.Image = MagicMock()
+        stderr = io.StringIO()
+        with patch.dict("sys.modules", {"aim": aim}), patch("sys.stderr", stderr):
+            collage.track_aim_run(argparse.Namespace(), Path("runs/example"), {"inference_time": 1.2}, None, None)
+        self.assertIn("Aim tracking failed", stderr.getvalue())
+        run.close.assert_called_once()
+
+    def test_missing_aim_warns_without_failing(self):
+        stderr = io.StringIO()
+        with patch.dict("sys.modules", {"aim": None}), patch("sys.stderr", stderr):
+            collage.track_aim_run(argparse.Namespace(), Path("runs/example"), {}, None, None)
+        self.assertIn("Local results are saved", stderr.getvalue())
+
     def test_default_runs_are_unique(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(collage, "Path", side_effect=lambda path: Path(directory) / path):
@@ -50,8 +87,10 @@ class RunLoggingTests(unittest.TestCase):
             perf = {"preprocessing_time": 0.1, "inference_time": 0.2, "total_time": 0.3}
             with patch("sys.argv", command), patch.object(collage, "load_pipeline", return_value=(object(), 0.4)), \
                     patch.object(collage, "inpaint_crop_and_patch", return_value=(Image.new("RGB", (72, 32)), perf)) as inference, \
+                    patch.object(collage, "track_aim_run") as tracking, \
                     redirect_stdout(io.StringIO()):
                 collage.main()
+            tracking.assert_called_once()
             params = json.loads((output.parent / "params.json").read_text())
             metrics = json.loads((output.parent / "metrics.json").read_text())
             self.assertEqual(params["seed"], 123)
