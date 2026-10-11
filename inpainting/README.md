@@ -90,6 +90,36 @@ through `params.json`. System/environment and terminal-log capture are disabled.
 Aim stores image copies, so back up both `runs/` and `.aim/`; neither is tracked
 by Git. Existing runs are not automatically imported.
 
+### Compare settings for the same inputs
+
+Every new run records `params.input_pair_id`, a SHA-256 identifier of the ordered
+left/right RGB pixels and dimensions before height normalization. Renaming a file
+does not change the ID; swapping left/right or changing pixels does. Different
+settings, including output height, share an ID when their original inputs match.
+
+In Aim, filter runs with `run.params.input_pair_id == "<ID from params.json>"`.
+Compare their `output` or `comparison` image sequences and display gap, feather,
+steps, guidance scale, seed, and inference time. Keep seed fixed when isolating
+another setting; test several seeds before judging robustness.
+
+Numeric metrics are tracked once, not duplicated as Aim parameters. Nonnumeric
+details such as crop coordinates are stored under `metadata`. Existing Aim runs
+retain their old fields and do not acquire an input pair ID automatically.
+
+### Assess quality
+
+Timing is not a quality score. For unrelated photographs, there is no single
+correct gap: inspect seam visibility, color/lighting continuity, scene coherence,
+and changes to the original images. Record consistent ratings in the Aim run's
+description to support comparison.
+
+For inputs split from one original photo, the missing strip provides a reference.
+PSNR/SSIM can measure reconstruction inside that strip when dimensions and pixel
+alignment match; perceptual metrics such as LPIPS provide another signal. These
+scores can penalize plausible alternative content, so retain visual review.
+Do not score the whole canvas: unchanged pixels can hide a poor seam.
+Automatic quality scoring is not implemented.
+
 ## Checks
 
 Check run logging without GPU inference:

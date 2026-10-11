@@ -40,6 +40,7 @@ Key Concepts (for learning):
 import argparse
 from datetime import datetime, timezone
 import json
+import hashlib
 import os
 from pathlib import Path
 import sys
@@ -254,6 +255,16 @@ def create_collage_canvas(
     return canvas, gap_x_start, normalized, adjusted_gap
 
 
+def image_pair_id(images):
+    """Identify ordered input pixels independently of filenames or run settings."""
+    digest = hashlib.sha256()
+    for image in images:
+        image = image.convert("RGB")
+        digest.update(f"{image.width}x{image.height}:".encode("ascii"))
+        digest.update(image.tobytes())
+    return digest.hexdigest()
+
+
 def prepare_run(args):
     """Create the output directory and reserve metadata without overwriting a run."""
     if args.output is None:
@@ -291,7 +302,8 @@ def track_aim_run(args, run_dir, perf, result, comparison):
         run["params"] = vars(args)
         run["run_id"] = run_dir.name
         run["run_dir"] = str(run_dir.resolve())
-        run["metrics"] = perf
+        run["metadata"] = {name: value for name, value in perf.items()
+                           if not isinstance(value, (int, float))}
         for name, value in perf.items():
             if isinstance(value, (int, float)):
                 run.track(value, name=name, step=0)
@@ -347,6 +359,7 @@ def main():
         feather=args.feather,
     )
 
+    args.input_pair_id = image_pair_id(images)
     run_dir, comparison_path = prepare_run(args)
     print(f"Run directory: {run_dir}")
     

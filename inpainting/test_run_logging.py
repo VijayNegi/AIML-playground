@@ -17,6 +17,15 @@ from inpainting_utils import inpaint_crop_and_patch
 
 
 class RunLoggingTests(unittest.TestCase):
+    def test_input_pair_id_is_stable_ordered_and_content_based(self):
+        left = Image.new("RGB", (8, 8), "green")
+        right = Image.new("RGB", (8, 8), "blue")
+        pair_id = collage.image_pair_id([left, right])
+        self.assertEqual(pair_id, collage.image_pair_id([left.copy(), right.copy()]))
+        self.assertNotEqual(pair_id, collage.image_pair_id([right, left]))
+        right.putpixel((0, 0), (255, 0, 0))
+        self.assertNotEqual(pair_id, collage.image_pair_id([left, right]))
+
     def test_aim_tracks_params_metrics_images_and_closes(self):
         run = MagicMock()
         aim = types.ModuleType("aim")
@@ -29,6 +38,8 @@ class RunLoggingTests(unittest.TestCase):
                                   {"inference_time": 1.2, "crop_bbox": [0, 0, 8, 8]}, image, image)
         self.assertEqual(run.name, "example")
         run.__setitem__.assert_any_call("params", vars(args))
+        run.__setitem__.assert_any_call("metadata", {"crop_bbox": [0, 0, 8, 8]})
+        self.assertNotIn("metrics", [call.args[0] for call in run.__setitem__.call_args_list])
         run.track.assert_any_call(1.2, name="inference_time", step=0)
         run.track.assert_any_call(image, name="output", step=0)
         run.track.assert_any_call(image, name="comparison", step=0)
@@ -94,6 +105,7 @@ class RunLoggingTests(unittest.TestCase):
             params = json.loads((output.parent / "params.json").read_text())
             metrics = json.loads((output.parent / "metrics.json").read_text())
             self.assertEqual(params["seed"], 123)
+            self.assertEqual(len(params["input_pair_id"]), 64)
             for name, value in {"feather": 30, "steps": 50, "guidance_scale": 7.5,
                                 "strength": 0.99, "max_crop_size": 1024,
                                 "model": "sd-xl", "save_steps": False, "save_every": 1,
