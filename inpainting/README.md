@@ -14,26 +14,60 @@ ongoing; multi-image and vertical/grid layouts are planned, not implemented.
 `runs/` is ignored by Git, not deleted. Back it up separately. Samples and docs
 are not ignored, but this reorganization does not stage or commit them.
 
-## Run from this directory
+## Install dependencies
 
-Create a fresh output directory for each experiment, then point the CLI at it:
+From this directory, activate the repository's virtual environment first. Use
+`python` and `python -m pip` only after activation, rather than a direct path to
+the virtual environment's Python executable.
 
 ```bash
-mkdir runs/my-experiment
+source ../.venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+For a CUDA machine, install the appropriate PyTorch build using the
+[official installation selector](https://pytorch.org/get-started/locally/) first.
+Optional CUDA acceleration packages such as xformers are not required here.
+
+## Run from this directory
+
+Each invocation creates a unique UTC-timestamped directory under `runs/`:
+
+Example: `runs/2026-10-12_14-30-05.123456_UTC/`. Fractional seconds keep rapid
+runs distinct. Existing run folders retain their names.
+
+```bash
+source ../.venv/bin/activate
 python collage.py \
   --images samples/split_main_1024_left.png samples/split_main_1024_right.png \
   --prompt "a green landscape" \
-  --gap 80 \
-  --output runs/my-experiment/output.png \
-  --steps-dir runs/my-experiment/intermediate_steps
+  --gap 80
 ```
 
-Add `--save-steps` to save denoising steps. The comparison image is saved next to
-the output. Existing scripts still write some debug files into the working
-directory; root-level PNGs are ignored. Move any results worth keeping into
-`runs/` before another run overwrites them.
+Each run contains `params.json` (all CLI settings, including defaults, plus
+inference strength, maximum crop size, and full model ID), `metrics.json`
+(inference/preprocessing/patch timings, model load time, actual gap, and canvas
+size), `output.png`, `output_comparison.png`, and crop debug images. Settings
+are saved before model loading, so failed runs retain their configuration.
+Metrics are saved after inference; a failed inference has no `metrics.json`.
 
-Run logging, JSON metadata, and Aim integration are deferred to a separate change.
+Add `--save-intermediate` for the canvas and mask, or `--save-steps` for denoising
+steps in the run's `intermediate_steps/` directory.
+
+To name a run, pass `--output runs/my-experiment/output.png`; its parent directory
+is created automatically. Existing outputs or run metadata are refused rather
+than overwritten. Use one directory per run. `--steps-dir` can still override
+the denoising step directory; choose a fresh directory to avoid overwriting steps.
+
+Other scripts retain their existing output paths. JSON records settings, not
+copies of inputs or a locked software environment; preserve samples separately.
+
+Aim integration remains deferred. Check run logging without GPU inference:
+
+```bash
+source ../.venv/bin/activate
+python -m unittest test_run_logging
+```
 
 ## Documentation
 

@@ -1,1 +1,2 @@
-python collage.py --images "./samples/split_main_1024_left.png" "./samples/split_main_1024_right.png" --prompt "a green landscape" --gap 80 --output "./runs/collage_output.png" --steps-dir "./runs/intermediate_steps"
+source ../.venv/bin/activate
+python collage.py --images "./samples/split_main_1024_left.png" "./samples/split_main_1024_right.png" --prompt "a green landscape" --gap 80

@@ -11,6 +11,7 @@ Requirements:
 import argparse
 import cv2
 import numpy as np
+from pathlib import Path
 import time
 import torch
 from diffusers import AutoPipelineForInpainting
@@ -500,8 +501,8 @@ def get_crop_region_around_mask(
         return None
     
     # Get bounding box of the mask
-    y_min, y_max = white_pixels[0].min(), white_pixels[0].max()
-    x_min, x_max = white_pixels[1].min(), white_pixels[1].max()
+    y_min, y_max = int(white_pixels[0].min()), int(white_pixels[0].max())
+    x_min, x_max = int(white_pixels[1].min()), int(white_pixels[1].max())
     
     mask_width = x_max - x_min
     mask_height = y_max - y_min
@@ -708,6 +709,7 @@ def inpaint_crop_and_patch(
     save_intermediate: bool = False,
     intermediate_dir: str = "intermediate_steps",
     save_every: int = 1,
+    debug_dir=".",
 ):
     """
     Crop the region around the mask (max 1024x1024), inpaint it, and paste back.
@@ -735,6 +737,7 @@ def inpaint_crop_and_patch(
         save_intermediate: If True, save images at each denoising step
         intermediate_dir: Directory to save intermediate images
         save_every: Save every N steps (1 = every step, 5 = every 5th step)
+        debug_dir: Directory for crop input, mask, and result debug images
         
     Returns:
         Tuple of (inpainted_image, performance_dict)
@@ -797,9 +800,11 @@ def inpaint_crop_and_patch(
     perf['crop_size'] = f"{crop_width}x{crop_height}"
     
     # Debug: Save crops for inspection
-    crop_image.save("debug_crop_image.png")
-    crop_mask.save("debug_crop_mask.png")
-    print(f"  Debug: Saved debug_crop_image.png and debug_crop_mask.png")
+    debug_dir = Path(debug_dir)
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    crop_image.save(debug_dir / "debug_crop_image.png")
+    crop_mask.save(debug_dir / "debug_crop_mask.png")
+    print(f"  Debug: Saved crop image and mask in: {debug_dir}")
     
     # Setup callback for intermediate images
     callback = None
@@ -827,8 +832,8 @@ def inpaint_crop_and_patch(
     perf['strength'] = strength
     
     # Debug: Save model output
-    result.save("debug_crop_result.png")
-    print(f"  Debug: Saved debug_crop_result.png (size: {result.size})")
+    result.save(debug_dir / "debug_crop_result.png")
+    print(f"  Debug: Saved {debug_dir / 'debug_crop_result.png'} (size: {result.size})")
     
     # Ensure result matches crop size (safety check)
     if result.size != (crop_width, crop_height):

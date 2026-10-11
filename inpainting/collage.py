@@ -38,7 +38,10 @@ Key Concepts (for learning):
 """
 
 import argparse
+from datetime import datetime, timezone
+import json
 import os
+from pathlib import Path
 import sys
 from PIL import Image
 
@@ -95,8 +98,8 @@ Examples:
     parser.add_argument(
         "--output", "-o",
         type=str,
-        default="collage_output.png",
-        help="Output file path (default: collage_output.png)"
+        default=None,
+        help="Output file path (default: runs/<UTC timestamp>/output.png)"
     )
     
     parser.add_argument(
@@ -172,8 +175,8 @@ Examples:
     parser.add_argument(
         "--steps-dir",
         type=str,
-        default="intermediate_steps",
-        help="Directory to save step images (default: intermediate_steps)"
+        default=None,
+        help="Directory to save step images (default: <run directory>/intermediate_steps)"
     )
     
     parser.add_argument(
@@ -250,6 +253,30 @@ def create_collage_canvas(
     return canvas, gap_x_start, normalized, adjusted_gap
 
 
+def prepare_run(args):
+    """Create the output directory and reserve metadata without overwriting a run."""
+    if args.output is None:
+        run_dir = Path("runs") / datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S.%f_UTC")
+        run_dir.mkdir(parents=True, exist_ok=False)
+        args.output = str(run_dir / "output.png")
+    else:
+        run_dir = Path(args.output).parent
+        run_dir.mkdir(parents=True, exist_ok=True)
+    output = Path(args.output)
+    comparison_path = output.with_name(f"{output.stem}_comparison.png")
+    if any(path.exists() for path in (output, comparison_path, run_dir / "params.json", run_dir / "metrics.json")):
+        raise FileExistsError(f"Run output or metadata already exists in {run_dir}; choose a fresh directory")
+    if args.steps_dir is None:
+        args.steps_dir = str(run_dir / "intermediate_steps")
+    args.strength = 0.99
+    args.max_crop_size = 1024
+    args.model_id = AVAILABLE_MODELS[args.model]
+    with (run_dir / "params.json").open("x") as file:
+        json.dump(vars(args), file, indent=2)
+        file.write("\n")
+    return run_dir, comparison_path
+
+
 def main():
     """Main function for the seamless collage tool."""
     args = parse_collage_args()
@@ -288,17 +315,20 @@ def main():
         gap_width=adjusted_gap,
         feather=args.feather,
     )
+
+    run_dir, comparison_path = prepare_run(args)
+    print(f"Run directory: {run_dir}")
     
     # Save intermediate files if requested
     if args.save_intermediate:
-        canvas.save("collage_canvas.png")
-        mask.save("collage_mask.png")
-        print("  Saved: collage_canvas.png, collage_mask.png")
+        canvas.save(run_dir / "collage_canvas.png")
+        mask.save(run_dir / "collage_mask.png")
+        print(f"  Saved canvas and mask in: {run_dir}")
     
     # Load the inpainting model
     print(f"\nLoading inpainting model: {args.model}")
     print("-" * 40)
-    model_id = AVAILABLE_MODELS[args.model]
+    model_id = args.model_id
     pipe, load_time = load_pipeline(model_id)
     print(f"Model loaded in {load_time:.2f}s")
     
@@ -318,15 +348,24 @@ def main():
         num_inference_steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
-        max_crop_size=1024,  # SDXL optimal size
+        max_crop_size=args.max_crop_size,  # SDXL optimal size
+        strength=args.strength,
         save_intermediate=args.save_steps,
         intermediate_dir=args.steps_dir,
         save_every=args.save_every,
+        debug_dir=run_dir,
     )
-    
+
+    perf['model_load_time'] = load_time
+    perf['adjusted_gap'] = adjusted_gap
+    perf['canvas_size'] = list(canvas.size)
     # Save the result
     result.save(args.output)
     print(f"\n✓ Seamless collage saved to: {args.output}")
+
+    metrics_json = json.dumps(perf, indent=2)
+    with (run_dir / "metrics.json").open("x") as file:
+        file.write(metrics_json + "\n")
     
     # Performance summary
     print(f"\nPerformance:")
@@ -345,7 +384,6 @@ def main():
     comparison.paste(canvas, (0, 0))
     comparison.paste(result, (0, canvas.size[1]))
     
-    comparison_path = args.output.replace(".png", "_comparison.png")
     comparison.save(comparison_path)
     print(f"  Comparison saved to: {comparison_path}")
     

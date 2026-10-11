@@ -1,5 +1,23 @@
 # PyTorch 2.6+ Installation Guide
 
+## Activate the Virtual Environment First
+
+Run commands from `inpainting/`, not `docs/`. Activate the repository's virtual
+environment before running any Python or package installation commands:
+
+```bash
+# macOS / Linux
+source ../.venv/bin/activate
+```
+
+```powershell
+# Windows PowerShell
+..\.venv\Scripts\Activate.ps1
+```
+
+After activation, use `python` and `python -m pip` (instead of bare `pip` in the
+older examples below). Do not invoke Python through its virtual environment path.
+
 ## The Problem
 You're getting this error:
 ```

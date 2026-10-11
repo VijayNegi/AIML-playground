@@ -1,0 +1,9 @@
+# shortcut: versions are not locked; pin a tested environment after a successful baseline run.
+torch>=2.6
+diffusers
+transformers
+accelerate
+safetensors
+numpy
+Pillow
+opencv-python
