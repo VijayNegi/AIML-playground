@@ -10,12 +10,14 @@ Requirements:
     pip install diffusers transformers accelerate torch pillow opencv-python
 
 Usage:
-    # Basic usage - blend two images horizontally
-    python collage.py --images photo1.jpg photo2.jpg --prompt "sunny beach scene"
+    # Basic usage - blend two images with generic prompt (no scene analysis needed)
+    python collage.py --images photo1.jpg photo2.jpg
+    
+    # With custom scene-specific prompt (optional)
+    python collage.py --images img1.jpg img2.jpg --prompt "forest landscape"
     
     # With custom options
     python collage.py --images img1.jpg img2.jpg \\
-        --prompt "forest landscape" \\
         --gap 80 \\
         --feather 40 \\
         --model sd-xl \\
@@ -57,14 +59,17 @@ def parse_collage_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Basic usage
+    # Basic usage - uses generic prompt that matches any scene
+    python collage.py --images photo1.jpg photo2.jpg
+    
+    # With optional custom prompt if you want more control
     python collage.py --images photo1.jpg photo2.jpg --prompt "beach sunset"
     
     # Custom gap and feathering
-    python collage.py --images a.jpg b.jpg --prompt "forest" --gap 100 --feather 50
+    python collage.py --images a.jpg b.jpg --gap 100 --feather 50
     
-    # Use a specific model
-    python collage.py --images a.jpg b.jpg --prompt "city" --model sd-xl
+    # Lower guidance scale (good for better context matching)
+    python collage.py --images a.jpg b.jpg --guidance-scale 5.0
         """
     )
     
@@ -80,8 +85,10 @@ Examples:
     parser.add_argument(
         "--prompt", "-p",
         type=str,
-        required=True,
-        help="Text prompt describing the scene (guides the AI for the gap region)"
+        default="seamless natural transition, matching surroundings, continuous scene",
+        help="Text prompt for the gap region. Default is a generic prompt that works "
+             "universally by telling the model to match surrounding context. "
+             "For object removal, try: 'clean background' or 'natural continuation'"
     )
     
     # Optional arguments
@@ -124,7 +131,8 @@ Examples:
     parser.add_argument(
         "--negative-prompt",
         type=str,
-        default="blurry, low quality, distorted, seams, visible borders, artifacts",
+        default="blurry, low quality, distorted, seams, visible borders, artifacts, "
+                "harsh edges, discontinuity, mismatched colors, abrupt transition",
         help="What to avoid in generation (default includes seam-related terms)"
     )
     
@@ -153,6 +161,26 @@ Examples:
         "--save-intermediate",
         action="store_true",
         help="Save intermediate images (canvas, mask) for debugging"
+    )
+    
+    parser.add_argument(
+        "--save-steps",
+        action="store_true",
+        help="Save image after each denoising step (visualize diffusion process)"
+    )
+    
+    parser.add_argument(
+        "--steps-dir",
+        type=str,
+        default="intermediate_steps",
+        help="Directory to save step images (default: intermediate_steps)"
+    )
+    
+    parser.add_argument(
+        "--save-every",
+        type=int,
+        default=1,
+        help="Save every N steps (default: 1 = every step, use 5 for every 5th)"
     )
     
     return parser.parse_args()
@@ -291,6 +319,9 @@ def main():
         guidance_scale=args.guidance_scale,
         seed=args.seed,
         max_crop_size=1024,  # SDXL optimal size
+        save_intermediate=args.save_steps,
+        intermediate_dir=args.steps_dir,
+        save_every=args.save_every,
     )
     
     # Save the result

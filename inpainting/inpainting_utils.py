@@ -541,6 +541,68 @@ def get_crop_region_around_mask(
     return (x1, y1, x2, y2)
 
 
+def create_step_callback(output_dir: str = "intermediate_steps", save_every: int = 1):
+    """
+    Create a callback function to save intermediate images during diffusion.
+    
+    The callback decodes the latents at each step and saves them as images,
+    allowing you to visualize the denoising process.
+    
+    Args:
+        output_dir: Directory to save intermediate images
+        save_every: Save every N steps (1 = every step, 5 = every 5th step)
+        
+    Returns:
+        Callback function compatible with diffusers pipelines
+    """
+    import os
+    os.makedirs(output_dir, exist_ok=True)
+    
+    def callback_fn(pipe, step: int, timestep: int, callback_kwargs: dict):
+        """
+        Callback called at each denoising step.
+        
+        Args:
+            pipe: The pipeline instance
+            step: Current step number (0-indexed)
+            timestep: Current timestep value from the scheduler
+            callback_kwargs: Dict containing 'latents' and other state
+            
+        Returns:
+            callback_kwargs (required by diffusers)
+        """
+        if step % save_every != 0:
+            return callback_kwargs
+        
+        latents = callback_kwargs["latents"]
+        
+        # Decode latents to image
+        # Scale latents (required for VAE decoding)
+        with torch.no_grad():
+            # Get the VAE scaling factor
+            scaling_factor = pipe.vae.config.scaling_factor
+            scaled_latents = latents / scaling_factor
+            
+            # Decode to image
+            decoded = pipe.vae.decode(scaled_latents, return_dict=False)[0]
+            
+            # Convert to PIL Image
+            # Output is in range [-1, 1], convert to [0, 255]
+            decoded = (decoded / 2 + 0.5).clamp(0, 1)
+            decoded = decoded.cpu().permute(0, 2, 3, 1).numpy()
+            decoded = (decoded * 255).round().astype(np.uint8)
+            
+            # Save the image
+            for i, img_array in enumerate(decoded):
+                img = Image.fromarray(img_array)
+                img.save(os.path.join(output_dir, f"step_{step:04d}_t{timestep}.png"))
+                print(f"  Saved intermediate: step_{step:04d}_t{timestep}.png")
+        
+        return callback_kwargs
+    
+    return callback_fn
+
+
 def inpaint(
     pipe,
     image: Image.Image,
@@ -551,6 +613,9 @@ def inpaint(
     guidance_scale: float = 7.5,
     seed: int = None,
     strength: float = 0.99,
+    save_intermediate: bool = False,
+    intermediate_dir: str = "intermediate_steps",
+    save_every: int = 1,
 ):
     """
     Perform inpainting on an image with performance logging.
@@ -566,6 +631,9 @@ def inpaint(
         seed: Random seed for reproducibility
         strength: How much to transform the masked region (0.0-1.0).
                   Use <1.0 for SDXL to avoid quality issues (default 0.99)
+        save_intermediate: If True, save images at each denoising step
+        intermediate_dir: Directory to save intermediate images
+        save_every: Save every N steps (1 = every step, 5 = every 5th step)
         
     Returns:
         Tuple of (inpainted_image, performance_dict)
@@ -596,6 +664,12 @@ def inpaint(
     
     perf['preprocessing_time'] = time.time() - prep_start
     
+    # Setup callback for intermediate images
+    callback = None
+    if save_intermediate:
+        callback = create_step_callback(intermediate_dir, save_every)
+        print(f"  Saving intermediate images to: {intermediate_dir}/")
+    
     # Run inpainting
     inference_start = time.time()
     result = pipe(
@@ -607,6 +681,7 @@ def inpaint(
         guidance_scale=guidance_scale,
         strength=strength,  # Important for SDXL: use <1.0 to avoid quality issues
         generator=generator,
+        callback_on_step_end=callback,
     ).images[0]
     perf['inference_time'] = time.time() - inference_start
     
@@ -630,6 +705,9 @@ def inpaint_crop_and_patch(
     seed: int = None,
     max_crop_size: int = 1024,
     strength: float = 0.99,
+    save_intermediate: bool = False,
+    intermediate_dir: str = "intermediate_steps",
+    save_every: int = 1,
 ):
     """
     Crop the region around the mask (max 1024x1024), inpaint it, and paste back.
@@ -654,6 +732,9 @@ def inpaint_crop_and_patch(
         max_crop_size: Maximum crop dimension (default 1024 for SDXL)
         strength: How much to transform the masked region (0.0-1.0). 
                   Use <1.0 for SDXL to avoid quality issues (default 0.99)
+        save_intermediate: If True, save images at each denoising step
+        intermediate_dir: Directory to save intermediate images
+        save_every: Save every N steps (1 = every step, 5 = every 5th step)
         
     Returns:
         Tuple of (inpainted_image, performance_dict)
@@ -720,24 +801,40 @@ def inpaint_crop_and_patch(
     crop_mask.save("debug_crop_mask.png")
     print(f"  Debug: Saved debug_crop_image.png and debug_crop_mask.png")
     
+    # Setup callback for intermediate images
+    callback = None
+    if save_intermediate:
+        callback = create_step_callback(intermediate_dir, save_every)
+        print(f"  Saving intermediate images to: {intermediate_dir}/")
+    
     # Run inpainting on the crop
+    # IMPORTANT: Specify width/height to prevent SDXL from resizing to 1024x1024
     inference_start = time.time()
     result = pipe(
         prompt=prompt,
         negative_prompt=negative_prompt,
         image=crop_image,
         mask_image=crop_mask,
+        width=crop_width,
+        height=crop_height,
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         strength=strength,  # Important for SDXL: use <1.0 to avoid quality issues
         generator=generator,
+        callback_on_step_end=callback,
     ).images[0]
     perf['inference_time'] = time.time() - inference_start
     perf['strength'] = strength
     
     # Debug: Save model output
     result.save("debug_crop_result.png")
-    print(f"  Debug: Saved debug_crop_result.png")
+    print(f"  Debug: Saved debug_crop_result.png (size: {result.size})")
+    
+    # Ensure result matches crop size (safety check)
+    if result.size != (crop_width, crop_height):
+        print(f"  Warning: Result size {result.size} != crop size ({crop_width}, {crop_height}), resizing...")
+        result = result.resize((crop_width, crop_height), Image.LANCZOS)
+    
     patch_start = time.time()
     final_result = image.copy()
     final_result.paste(result, (bbox[0], bbox[1]))
