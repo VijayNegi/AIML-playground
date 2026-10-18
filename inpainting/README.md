@@ -108,10 +108,43 @@ retain their old fields and do not acquire an input pair ID automatically.
 
 ### Assess quality
 
+Review completed runs that do not yet have `review.json`:
+
+```bash
+source ../.venv/bin/activate
+python review_runs.py
+```
+
+The script opens `http://127.0.0.1:8765/` in your browser. The page shows each
+before/after comparison, all settings, three 1–5 rating groups, and optional notes.
+Click the image for full resolution. Choose a run from the dropdown or use
+Skip / next; click Save review and sync to Aim to save and advance.
+It saves `review.json` with a UTC timestamp and never overwrites completed reviews.
+Aim sync success or failure appears on the next page; local reviews remain safe.
+Press Ctrl+C in the terminal to stop the server. Unsaved form entries are not kept.
+Use `--runs-dir PATH` for another collection or `--port 8766` if the port is busy.
+The server listens only on loopback, with form-token protection; it is not intended
+for shared network access. No additional UI dependencies are required.
+
+Only runs with `params.json`, output, and comparison images are selected. Legacy
+images without metadata and incomplete runs are skipped. After saving, the script
+syncs the review into the existing Aim run matched by its absolute `run_dir`.
+Ratings appear in Aim's Metrics column group as `review.seam_quality`,
+`review.scene_coherence`, and `review.preservation`, not as run parameters.
+Notes are tracked text named `review.notes` and can be viewed in Aim's text
+explorer. `review_synced_at` is a run parameter used only to avoid repeated sync.
+Previously synced review dictionaries are migrated on the next script startup.
+It does not overwrite the Aim description or create new runs.
+
+On startup, existing local reviews are synced too, allowing recovery after an Aim
+failure without entering ratings again. Identical reviews are not rewritten.
+Missing or ambiguous matches print a warning and preserve the local review.
+Moving run folders breaks absolute-path matching; sync before relocating them.
+
 Timing is not a quality score. For unrelated photographs, there is no single
 correct gap: inspect seam visibility, color/lighting continuity, scene coherence,
-and changes to the original images. Record consistent ratings in the Aim run's
-description to support comparison.
+and changes to the original images. Record consistent ratings with the browser
+review form to support comparison.
 
 For inputs split from one original photo, the missing strip provides a reference.
 PSNR/SSIM can measure reconstruction inside that strip when dimensions and pixel
@@ -126,7 +159,7 @@ Check run logging without GPU inference:
 
 ```bash
 source ../.venv/bin/activate
-python -m unittest test_run_logging
+python -m unittest test_run_logging test_review_runs
 ```
 
 ## Documentation
