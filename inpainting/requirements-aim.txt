@@ -1,0 +1,2 @@
+# Compatibility install file; Aim is also included in requirements.txt.
+aim>=3,<4

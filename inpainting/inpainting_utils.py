@@ -797,6 +797,7 @@ def inpaint_crop_and_patch(
     
     perf['preprocessing_time'] = time.time() - prep_start
     perf['crop_bbox'] = bbox
+    perf['mask_binarized'] = bool(getattr(getattr(getattr(pipe, 'mask_processor', None), 'config', None), 'do_binarize', False))
     perf['crop_size'] = f"{crop_width}x{crop_height}"
     
     # Debug: Save crops for inspection

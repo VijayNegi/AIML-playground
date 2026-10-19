@@ -99,9 +99,11 @@ class RunLoggingTests(unittest.TestCase):
             with patch("sys.argv", command), patch.object(collage, "load_pipeline", return_value=(object(), 0.4)), \
                     patch.object(collage, "inpaint_crop_and_patch", return_value=(Image.new("RGB", (72, 32)), perf)) as inference, \
                     patch.object(collage, "track_aim_run") as tracking, \
+                    patch.object(collage, "assess_quality", return_value={"quality_maniqa": 0.5}) as assessment, \
                     redirect_stdout(io.StringIO()):
                 collage.main()
             tracking.assert_called_once()
+            assessment.assert_called_once()
             params = json.loads((output.parent / "params.json").read_text())
             metrics = json.loads((output.parent / "metrics.json").read_text())
             self.assertEqual(params["seed"], 123)
@@ -117,6 +119,7 @@ class RunLoggingTests(unittest.TestCase):
             self.assertEqual(metrics["model_load_time"], 0.4)
             self.assertEqual(metrics["adjusted_gap"], 8)
             self.assertEqual(metrics["inference_time"], 0.2)
+            self.assertEqual(metrics["quality_maniqa"], 0.5)
             self.assertEqual(inference.call_args.kwargs["debug_dir"], output.parent)
             for name in ("result.jpg", "result_comparison.png", "collage_canvas.png", "collage_mask.png"):
                 self.assertTrue((output.parent / name).is_file(), name)

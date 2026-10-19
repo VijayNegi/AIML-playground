@@ -45,6 +45,7 @@ import os
 from pathlib import Path
 import sys
 from PIL import Image
+from quality_metrics import assess_quality
 
 from inpainting_utils import (
     AVAILABLE_MODELS,
@@ -406,6 +407,14 @@ def main():
     # Save the result
     result.save(args.output)
     print(f"\n✓ Seamless collage saved to: {args.output}")
+
+    try:
+        perf.update(assess_quality(canvas, result, gap_x_start, adjusted_gap,
+                                   args.feather, perf.get("crop_bbox"), run_dir,
+                                   mask=mask, mask_binarized=perf.get("mask_binarized", False)))
+    except Exception as error:
+        perf["quality_error"] = str(error)
+        print(f"Warning: Quality diagnostics failed: {error}. Output is saved.")
 
     metrics_json = json.dumps(perf, indent=2)
     with (run_dir / "metrics.json").open("x") as file:

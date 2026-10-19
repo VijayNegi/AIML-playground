@@ -116,7 +116,39 @@ python review_runs.py
 ```
 
 The script opens `http://127.0.0.1:8765/` in your browser. The page shows each
-before/after comparison, all settings, three 1–5 rating groups, and optional notes.
+output by default, all settings, three 1–5 rating groups, and optional notes.
+Use **Show input / Show output** to flip between the assembled input canvas and
+the inpainted result. The input is read from the existing comparison image.
+Spatial metrics surround the image: gap and model-mask ranges above, outer-feather
+and pasted-crop ranges below, and MANIQA tile values on the right. Range bars align
+with image x coordinates; L/R buttons show color difference and extra edge strength.
+Connector lines link each tile score to its vertical center, with evenly spaced
+labels to avoid crowding near overlapping tiles. Hover/focus or select these values
+for the same region overlays, without automatically scrolling away from the image.
+The image scales with viewport height to keep nearby metrics in view; click for
+full resolution. Detailed metric tables remain below. Small screens or very tall
+images with many tiles may still require scrolling or a larger window.
+The compact **Automatic assessment** panel beneath the image keeps scores visible
+in priority order: **1. Gap quality** (MANIQA), **2. Seams** (gap and blend edges),
+then **3. Patch** (preservation and pasted-crop edges). Boundary checks use one row
+per edge, with color mismatch, extra edge strength, edge strength, and nearby-edge
+values in columns. No metric groups are collapsed. Short explanations give scales
+and interpretation; MANIQA shows a reason when unavailable. Technical metric keys
+are available on value tooltips. No red/green quality thresholds are invented.
+Hover or keyboard-focus a metric value or **Show area** button to preview
+its area on the output. Click to pin the highlight and
+scroll the image into view; click again or use **Clear highlight** to remove it.
+Orange outlines the first region; blue/purple distinguish additional bands.
+Gradient checks show the adjacent pixel pair, color checks show both color bands,
+and gradient excess also shows nearby context. Preservation highlights all pixels
+eligible for checking outside the editable region, not just changed pixels.
+MANIQA highlights its gap tiles; individual tile scores and the lowest tile can
+also be selected. Older overview runs still highlight their recorded context crop.
+These are measurement regions, not defect maps.
+Highlights hide while viewing input and return when switching back to output.
+Runs missing recorded geometry show an explanation instead of guessed highlights.
+Review the image before reading scores to reduce anchoring. Missing scores are not
+computed by the page or replaced with zeros; older runs can show no automatic scores.
 Click the image for full resolution. Choose a run from the dropdown or use
 Skip / next; click Save review and sync to Aim to save and advance.
 It saves `review.json` with a UTC timestamp and never overwrites completed reviews.
@@ -146,12 +178,99 @@ correct gap: inspect seam visibility, color/lighting continuity, scene coherence
 and changes to the original images. Record consistent ratings with the browser
 review form to support comparison.
 
-For inputs split from one original photo, the missing strip provides a reference.
-PSNR/SSIM can measure reconstruction inside that strip when dimensions and pixel
-alignment match; perceptual metrics such as LPIPS provide another signal. These
-scores can penalize plausible alternative content, so retain visual review.
-Do not score the whole canvas: unchanged pixels can hide a poor seam.
-Automatic quality scoring is not implemented.
+### Automatic no-reference assessment
+
+New collage runs automatically compute separate diagnostics and a MANIQA score
+after saving the output. No original/reference photo is required, and creative
+content within the gap is not treated as reconstruction error.
+
+Activate the environment and install the updated requirements before running:
+
+```bash
+source ../.venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Results are saved in `metrics.json` and sent to Aim as `quality_*` metrics:
+
+- `quality_preservation_mae`: mean RGB change outside the gap and feather zone,
+  in 0–255 units. Lower is better; zero means no change.
+- `quality_preservation_changed_fraction`: fraction of outside pixels changed
+  in any channel, with no tolerance threshold. Not a perceptual severity score.
+- `quality_{boundary}_gradient`: mean adjacent-pixel RGB difference, in 0–1 units.
+  `nearby_gradient` measures parallel edges within eight pixels, excluding the
+  boundary itself; `gradient_excess` subtracts that baseline. Lower excess is a
+  diagnostic preference, not proof of better quality.
+- `quality_{boundary}_delta_e76`: mean row-wise Lab color distance between bands
+  up to eight pixels wide on each side. Lower suggests a smoother color transition.
+  Natural edges, shadows, and textures can legitimately produce high values.
+- Boundaries cover gap edges, outer editable/feather edges, and crop-patch edges.
+  Edges on the canvas border are omitted because they have no outside neighbor.
+  Missing baselines or preservation regions are JSON `null`, not fabricated zeros.
+- Assessment version 2 uses the actual grayscale mask: preservation checks pixels
+  with mask value zero, and outer feather bounds enclose nonzero mask pixels.
+  This avoids assuming the first nominal feather pixel is editable when its value
+  is actually zero. Model-mask checks separately measure the boundary after mask
+  thresholding and cropping. SDXL binarizes at 0.5, so feather values 128–255 are
+  masked and 0–127 are unmasked; passing a feathered mask does not by itself produce
+  soft alpha compositing. The current pipeline still pastes the entire generated
+  crop, and this change does not alter inference or compositing.
+  Diagnostics currently support the v1 vertical-strip mask, not arbitrary shapes.
+  Old scores and their recorded overlays are not silently recalculated.
+- Edge strength measures the pixel pair across the named edge. Nearby edges are
+  deliberately measured on either side, excluding that crossing. Their highlights
+  therefore sit beside the edge, not directly on it. Extra edge strength compares
+  the two measurements. Feathering creates an interval, not one universal seam:
+  gap edges, nonzero feather bounds, and thresholded model-mask edges differ.
+- `quality_maniqa`: PyIQA's `maniqa-pipal` model; higher is better. This is a raw
+  model score, not a calibrated 1–5 rating. No hand-weighted overall score is made.
+
+Assessment version 3 replaces the resized overview with native-resolution
+224×224 gap-centered tiles, stepping vertically by 112 pixels (50% overlap).
+The final tile is anchored to the bottom edge, covering the full gap height.
+Each tile contains the full gap width and some neighboring context where possible.
+The actual adjusted gap must be 1–224 pixels, and the image must be at least
+224×224. Unsupported sizes skip MANIQA with an error rather than resizing/padding
+or evaluating only part of the gap. A 224-pixel-wide gap leaves no side context.
+
+`quality_maniqa` is the median tile score; `quality_maniqa_min` is the lowest tile
+score, a possible weak spot rather than an automatic failure. Both use higher-is-
+better scores. `quality_maniqa_tiles` retains every score and bounding box, with
+model/library versions, stride, aggregation, and input size also recorded. Review
+mode displays each tile score and can highlight all tiles or a single selected tile.
+No new overview image is saved; tiles are taken directly from the saved output.
+The model loads once per assessment and processes tiles sequentially on CPU to
+avoid competing with diffusion for GPU memory. More tiles add scoring time.
+The first assessment downloads pretrained weights and can take time. CPU scoring
+adds latency; `quality_assessment_time` is separate from inference timing.
+
+If MANIQA fails (missing dependency, offline weights, incompatible packages), the
+run retains diagnostics, images, and a `quality_maniqa_error`. No score is invented.
+Existing runs are not backfilled. The current pipeline pastes the entire crop, so
+preservation diagnostics can expose changes outside the intended editable region.
+
+### Validate automatic scores against your reviews
+
+Run several settings/seeds for the same input pair, review them in the browser,
+then print a CSV correlation report:
+
+```bash
+source ../.venv/bin/activate
+python compare_quality.py
+```
+
+The report computes Spearman rank correlations with tie handling, separately for
+each input pair, assessment version, model/library version, and crop/tile layout.
+At least three scored and reviewed runs are required per comparison; that minimum
+is exploratory, not enough to establish reliability. Constant scores/ratings
+produce a blank correlation. Positive correlation is expected for MANIQA and
+negative for error/discontinuity diagnostics when they agree with human ratings.
+
+Inspect seam diagnostics against seam ratings and preservation against preservation
+ratings first. Do not pool unrelated scenes or turn these correlations into weights.
+Test promising metrics on held-out image pairs and several seeds before using
+them for automatic selection. Browser reviews remain the human check; no learned
+ranking, combined score, or automatic winner selection is implemented.
 
 ## Checks
 
@@ -159,7 +278,7 @@ Check run logging without GPU inference:
 
 ```bash
 source ../.venv/bin/activate
-python -m unittest test_run_logging test_review_runs
+python -m unittest test_run_logging test_review_runs test_quality_metrics
 ```
 
 ## Documentation
