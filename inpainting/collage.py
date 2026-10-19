@@ -38,7 +38,7 @@ Key Concepts (for learning):
 """
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 import hashlib
 import os
@@ -101,7 +101,7 @@ Examples:
         "--output", "-o",
         type=str,
         default=None,
-        help="Output file path (default: runs/<UTC timestamp>/output.png)"
+        help="Output file path (default: runs/<local timestamp with timezone offset>/output.png)"
     )
     
     parser.add_argument(
@@ -269,7 +269,7 @@ def image_pair_id(images):
 def prepare_run(args):
     """Create the output directory and reserve metadata without overwriting a run."""
     if args.output is None:
-        run_dir = Path("runs") / datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S.%f_UTC")
+        run_dir = Path("runs") / datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M-%S.%f_%z")
         run_dir.mkdir(parents=True, exist_ok=False)
         args.output = str(run_dir / "output.png")
     else:

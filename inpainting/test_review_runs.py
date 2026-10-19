@@ -1,6 +1,7 @@
 """Visual review checks without opening an image viewer."""
 
 from contextlib import redirect_stdout
+from datetime import datetime
 import io
 import json
 from pathlib import Path
@@ -222,6 +223,8 @@ class ReviewTests(unittest.TestCase):
                     self.assertEqual(request("POST", "/review", fields)[0], 303)
                     review = json.loads((run_dir / "review.json").read_text())
                     self.assertEqual(review["seam_quality"], 4)
+                    self.assertEqual(datetime.fromisoformat(review["reviewed_at"]).utcoffset(),
+                                     datetime.now().astimezone().utcoffset())
                     self.assertEqual(review["notes"], "Good seam")
                     sync.assert_called_once_with(run_dir, review)
                     self.assertEqual(request("POST", "/review", fields)[0], 409)

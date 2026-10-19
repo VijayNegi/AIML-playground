@@ -1,6 +1,7 @@
 """Run logging checks without model downloads or GPU inference."""
 
 import argparse
+from datetime import datetime, timedelta, timezone
 from contextlib import redirect_stdout
 import io
 import json
@@ -17,6 +18,14 @@ from inpainting_utils import inpaint_crop_and_patch
 
 
 class RunLoggingTests(unittest.TestCase):
+    def test_run_folder_uses_local_time_and_offset(self):
+        local = datetime(2026, 10, 19, 14, 30, 5, 123456, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+        with tempfile.TemporaryDirectory() as directory, patch.object(collage, "datetime") as clock:
+            clock.now.return_value.astimezone.return_value = local
+            with patch.object(collage, "Path", side_effect=lambda path: Path(directory) / path):
+                run_dir, _ = collage.prepare_run(argparse.Namespace(output=None, steps_dir=None, seed=42, model="sd-xl"))
+            self.assertEqual(run_dir.name, "2026-10-19_14-30-05.123456_+0530")
+
     def test_input_pair_id_is_stable_ordered_and_content_based(self):
         left = Image.new("RGB", (8, 8), "green")
         right = Image.new("RGB", (8, 8), "blue")
@@ -72,7 +81,7 @@ class RunLoggingTests(unittest.TestCase):
                 first_dir, _ = collage.prepare_run(first)
                 second_dir, _ = collage.prepare_run(second)
             self.assertNotEqual(first_dir, second_dir)
-            self.assertRegex(first_dir.name, r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{6}_UTC$")
+            self.assertRegex(first_dir.name, r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{6}_[+-]\d{4}$")
             params = json.loads((first_dir / "params.json").read_text())
             self.assertEqual(params, vars(first))
             self.assertEqual(first.steps_dir, str(first_dir / "intermediate_steps"))

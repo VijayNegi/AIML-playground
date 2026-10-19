@@ -31,10 +31,11 @@ Optional CUDA acceleration packages such as xformers are not required here.
 
 ## Run from this directory
 
-Each invocation creates a unique UTC-timestamped directory under `runs/`:
+Each invocation creates a unique local-time directory under `runs/`:
 
-Example: `runs/2026-10-12_14-30-05.123456_UTC/`. Fractional seconds keep rapid
-runs distinct. Existing run folders retain their names.
+Example in UTC+05:30: `runs/2026-10-12_14-30-05.123456_+0530/`. The timestamp uses
+the machine's local timezone; the offset distinguishes daylight-saving changes.
+Fractional seconds keep rapid runs distinct. Existing run folders retain their names.
 
 ```bash
 source ../.venv/bin/activate
@@ -151,7 +152,8 @@ Review the image before reading scores to reduce anchoring. Missing scores are n
 computed by the page or replaced with zeros; older runs can show no automatic scores.
 Click the image for full resolution. Choose a run from the dropdown or use
 Skip / next; click Save review and sync to Aim to save and advance.
-It saves `review.json` with a UTC timestamp and never overwrites completed reviews.
+It saves `review.json` with a local ISO timestamp including the timezone offset,
+and never overwrites completed reviews. Review sync preserves that same timestamp.
 Aim sync success or failure appears on the next page; local reviews remain safe.
 Press Ctrl+C in the terminal to stop the server. Unsaved form entries are not kept.
 Use `--runs-dir PATH` for another collection or `--port 8766` if the port is busy.

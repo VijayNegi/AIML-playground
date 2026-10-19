@@ -1,7 +1,7 @@
 """Review completed runs in a local browser and sync saved reviews to Aim."""
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 import io
 from html import escape
@@ -431,7 +431,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             review["notes"] = fields.get("notes", [""])[0].strip()
             if len(review["notes"]) > 10000:
                 raise ValueError("Notes exceed 10000 characters")
-            review["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+            review["reviewed_at"] = datetime.now().astimezone().isoformat()
             run_dir = selected[0]
             with (run_dir / "review.json").open("x") as file:
                 file.write(json.dumps(review, indent=2) + "\n")
