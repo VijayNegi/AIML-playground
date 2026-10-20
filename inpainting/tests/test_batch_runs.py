@@ -15,9 +15,9 @@ from urllib.parse import urlencode
 
 from PIL import Image
 
-from batch_runs import BatchManager, estimate_jobs, preview_batch
-from review_runs import review_server
-from quality_metrics import QUALITY_VERSION
+from inpaint_lab.batches import BatchManager, estimate_jobs, preview_batch
+from inpaint_lab.server import review_server
+from inpaint_lab.quality import QUALITY_VERSION
 
 
 def inputs(root):
@@ -217,11 +217,11 @@ class BatchTests(unittest.TestCase):
                     return response.status, response.read()
                 try:
                     self.assertEqual(request("/batches")[0], 200)
-                    self.assertEqual(request("/batch.js")[0], 200)
+                    self.assertEqual(request("/static/batch.js")[0], 200)
                     self.assertEqual(request("/api/batches/catalog")[0], 200)
                     self.assertEqual(request("/api/batches/sample?path=../outside")[0], 400)
                     self.assertEqual(request("/api/batches/preview", definition)[0], 403)
-                    with patch("collage.hardware_id", return_value="test"):
+                    with patch("inpaint_lab.runner.hardware_id", return_value="test"):
                         status, body = request("/api/batches/preview", definition, server.token)
                     self.assertEqual(status, 200)
                     preview = json.loads(body)

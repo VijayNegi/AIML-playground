@@ -5,7 +5,7 @@ This script helps diagnose why GPU usage is zero while memory is allocated.
 Run this to identify the issue before running the main inpainting script.
 
 Usage:
-    python gpu_diagnostic.py
+    python -m scripts.gpu_diagnostic
 """
 
 import torch

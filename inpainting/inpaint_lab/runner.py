@@ -11,13 +11,13 @@ Requirements:
 
 Usage:
     # Basic usage - blend two images with generic prompt (no scene analysis needed)
-    python collage.py --images photo1.jpg photo2.jpg
+    python -m inpaint_lab run --images photo1.jpg photo2.jpg
     
     # With custom scene-specific prompt (optional)
-    python collage.py --images img1.jpg img2.jpg --prompt "forest landscape"
+    python -m inpaint_lab run --images img1.jpg img2.jpg --prompt "forest landscape"
     
     # With custom options
-    python collage.py --images img1.jpg img2.jpg \\
+    python -m inpaint_lab run --images img1.jpg img2.jpg \\
         --gap 80 \\
         --feather 40 \\
         --model sd-xl \\
@@ -38,25 +38,19 @@ Key Concepts (for learning):
 """
 
 import argparse
-from datetime import datetime
 import json
 import hashlib
 import os
-from pathlib import Path
-import sys
 import time
 import platform
 from PIL import Image
-from quality_metrics import assess_quality
 
-from inpainting_utils import (
-    AVAILABLE_MODELS,
-    load_pipeline,
-    
-    inpaint_crop_and_patch,
-    normalize_image_heights,
-    create_blend_mask,
-)
+from inpaint_lab.canvas import create_blend_mask, create_collage_canvas
+from inpaint_lab.inpaint import inpaint_crop_and_patch
+from inpaint_lab.models import AVAILABLE_MODELS, load_pipeline
+from inpaint_lab.quality import assess_quality
+from inpaint_lab.runs import image_pair_id, prepare_run
+from inpaint_lab.tracking import track_aim_run
 
 
 def parse_collage_args(argv=None):
@@ -67,16 +61,16 @@ def parse_collage_args(argv=None):
         epilog="""
 Examples:
     # Basic usage - uses generic prompt that matches any scene
-    python collage.py --images photo1.jpg photo2.jpg
+    python -m inpaint_lab run --images photo1.jpg photo2.jpg
     
     # With optional custom prompt if you want more control
-    python collage.py --images photo1.jpg photo2.jpg --prompt "beach sunset"
+    python -m inpaint_lab run --images photo1.jpg photo2.jpg --prompt "beach sunset"
     
     # Custom gap and feathering
-    python collage.py --images a.jpg b.jpg --gap 100 --feather 50
+    python -m inpaint_lab run --images a.jpg b.jpg --gap 100 --feather 50
     
     # Lower guidance scale (good for better context matching)
-    python collage.py --images a.jpg b.jpg --guidance-scale 5.0
+    python -m inpaint_lab run --images a.jpg b.jpg --guidance-scale 5.0
         """
     )
     
@@ -192,139 +186,6 @@ Examples:
 
     
     return parser.parse_args(argv)
-
-
-def create_collage_canvas(
-    images: list,
-    gap: int,
-    target_height: int = None,
-) -> tuple:
-    """
-    Create a canvas with two images placed side by side with a gap.
-    
-    Args:
-        images: List of two PIL Images
-        gap: Width of gap between images in pixels
-        target_height: Optional target height (uses min height if None)
-        
-    Returns:
-        Tuple of (canvas, gap_x_start, normalized_images)
-        - canvas: PIL Image with both images placed
-        - gap_x_start: X coordinate where the gap begins
-        - normalized_images: The height-normalized input images
-    """
-    if len(images) != 2:
-        raise ValueError(f"Expected 2 images, got {len(images)}")
-    
-    # Normalize heights first
-    print(f"Normalizing image heights...")
-    normalized = normalize_image_heights(images, target_height)
-    img1, img2 = normalized
-    
-    print(f"  Image 1 (after height norm): {img1.size[0]}x{img1.size[1]}")
-    print(f"  Image 2 (after height norm): {img2.size[0]}x{img2.size[1]}")
-    
-    # Calculate raw canvas dimensions
-    raw_width = img1.width + gap + img2.width
-    raw_height = img1.height  # All images now have same height
-    
-    # Ensure dimensions are divisible by 8 (required by Stable Diffusion)
-    # Round UP to avoid cutting off images
-    canvas_width = ((raw_width + 7) // 8) * 8
-    canvas_height = ((raw_height + 7) // 8) * 8
-    
-    # Adjust gap to account for any width increase (distribute padding evenly)
-    width_padding = canvas_width - raw_width
-    adjusted_gap = gap + width_padding
-    
-    print(f"Canvas size: {canvas_width}x{canvas_height} (padded from {raw_width}x{raw_height})")
-    print(f"Gap adjusted: {gap} -> {adjusted_gap} (added {width_padding}px padding)")
-    
-    # Create canvas (black background - will be visible in the gap)
-    canvas = Image.new("RGB", (canvas_width, canvas_height), (0, 0, 0))
-    
-    # Place images
-    # Image 1 on the left
-    canvas.paste(img1, (0, 0))
-    
-    # Image 2 on the right (after the adjusted gap)
-    gap_x_start = img1.width
-    img2_x_start = img1.width + adjusted_gap
-    canvas.paste(img2, (img2_x_start, 0))
-    
-    print(f"Gap region: x={gap_x_start} to x={img2_x_start} (width={adjusted_gap})")
-    
-    # Return adjusted gap for mask creation
-    return canvas, gap_x_start, normalized, adjusted_gap
-
-
-def image_pair_id(images):
-    """Identify ordered input pixels independently of filenames or run settings."""
-    digest = hashlib.sha256()
-    for image in images:
-        image = image.convert("RGB")
-        digest.update(f"{image.width}x{image.height}:".encode("ascii"))
-        digest.update(image.tobytes())
-    return digest.hexdigest()
-
-
-def prepare_run(args):
-    """Create the output directory and reserve metadata without overwriting a run."""
-    if args.output is None:
-        run_dir = Path("runs") / datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M-%S.%f_%z")
-        run_dir.mkdir(parents=True, exist_ok=False)
-        args.output = str(run_dir / "output.png")
-    else:
-        run_dir = Path(args.output).parent
-        run_dir.mkdir(parents=True, exist_ok=True)
-    output = Path(args.output)
-    comparison_path = output.with_name(f"{output.stem}_comparison.png")
-    if any(path.exists() for path in (output, comparison_path, run_dir / "params.json", run_dir / "metrics.json")):
-        raise FileExistsError(f"Run output or metadata already exists in {run_dir}; choose a fresh directory")
-    if args.steps_dir is None:
-        args.steps_dir = str(run_dir / "intermediate_steps")
-    args.strength = 0.99
-    args.max_crop_size = 1024
-    args.model_id = AVAILABLE_MODELS[args.model]
-    with (run_dir / "params.json").open("x") as file:
-        json.dump(vars(args), file, indent=2)
-        file.write("\n")
-    return run_dir, comparison_path
-
-
-def track_aim_run(args, run_dir, perf, result, comparison):
-    """Mirror a completed local run into Aim without risking saved results."""
-    run = None
-    aim_hash = None
-    try:
-        from aim import Run, Image as AimImage
-
-        run = Run(repo=str(Path(__file__).resolve().parent), experiment="collage",
-                  system_tracking_interval=None, log_system_params=False,
-                  capture_terminal_logs=False)
-        run.name = run_dir.name
-        run["params"] = vars(args)
-        run["run_id"] = run_dir.name
-        run["run_dir"] = str(run_dir.resolve())
-        run["metadata"] = {name: value for name, value in perf.items()
-                           if not isinstance(value, (int, float))}
-        for name, value in perf.items():
-            if isinstance(value, (int, float)):
-                run.track(value, name=name, step=0)
-        run.track(AimImage(result), name="output", step=0)
-        run.track(AimImage(comparison), name="comparison", step=0)
-        print(f"Aim run: {run.hash}")
-        aim_hash = str(run.hash)
-    except Exception as error:
-        print(f"Warning: Aim tracking failed: {error}. Local results are saved in {run_dir}", file=sys.stderr)
-    finally:
-        if run is not None:
-            try:
-                run.close()
-            except Exception as error:
-                aim_hash = None
-                print(f"Warning: Aim close failed: {error}", file=sys.stderr)
-    return aim_hash
 
 
 def hardware_id():

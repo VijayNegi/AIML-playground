@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
-import collage
-from inpainting_utils import inpaint_crop_and_patch
+from inpaint_lab import runner, runs, tracking
+from inpaint_lab.inpaint import inpaint_crop_and_patch
 
 
 class RunLoggingTests(unittest.TestCase):
@@ -25,15 +25,15 @@ class RunLoggingTests(unittest.TestCase):
             Image.new("RGB", (256, 256), "green").save(source)
             resources = {}
             perf = {"preprocessing_time": 0.1, "inference_time": 0.2, "total_time": 0.3}
-            with patch.object(collage, "load_pipeline", return_value=(object(), 0.4)) as loader, \
-                    patch.object(collage, "inpaint_crop_and_patch", side_effect=lambda **kwargs: (Image.new("RGB", (520, 256)), dict(perf))), \
-                    patch.object(collage, "track_aim_run", return_value="test-hash"), \
-                    patch.object(collage, "assess_quality", return_value={}) as assessment, \
+            with patch.object(runner, "load_pipeline", return_value=(object(), 0.4)) as loader, \
+                    patch.object(runner, "inpaint_crop_and_patch", side_effect=lambda **kwargs: (Image.new("RGB", (520, 256)), dict(perf))), \
+                    patch.object(runner, "track_aim_run", return_value="test-hash"), \
+                    patch.object(runner, "assess_quality", return_value={}) as assessment, \
                     redirect_stdout(io.StringIO()):
                 for index in range(2):
-                    args = collage.parse_collage_args(["--images", str(source), str(source), "--gap", "8",
+                    args = runner.parse_collage_args(["--images", str(source), str(source), "--gap", "8",
                                                       "--output", str(root / f"run-{index}" / "output.png")])
-                    collage.run_collage(args, resources=resources)
+                    runner.run_collage(args, resources=resources)
             loader.assert_called_once()
             self.assertIs(assessment.call_args.kwargs["model_cache"], resources)
             first = json.loads((root / "run-0/metrics.json").read_text())
@@ -45,20 +45,20 @@ class RunLoggingTests(unittest.TestCase):
 
     def test_run_folder_uses_local_time_and_offset(self):
         local = datetime(2026, 10, 19, 14, 30, 5, 123456, tzinfo=timezone(timedelta(hours=5, minutes=30)))
-        with tempfile.TemporaryDirectory() as directory, patch.object(collage, "datetime") as clock:
+        with tempfile.TemporaryDirectory() as directory, patch.object(runs, "datetime") as clock:
             clock.now.return_value.astimezone.return_value = local
-            with patch.object(collage, "Path", side_effect=lambda path: Path(directory) / path):
-                run_dir, _ = collage.prepare_run(argparse.Namespace(output=None, steps_dir=None, seed=42, model="sd-xl"))
+            with patch.object(runs, "RUNS_DIR", Path(directory) / "runs"):
+                run_dir, _ = runs.prepare_run(argparse.Namespace(output=None, steps_dir=None, seed=42, model="sd-xl"))
             self.assertEqual(run_dir.name, "2026-10-19_14-30-05.123456_+0530")
 
     def test_input_pair_id_is_stable_ordered_and_content_based(self):
         left = Image.new("RGB", (8, 8), "green")
         right = Image.new("RGB", (8, 8), "blue")
-        pair_id = collage.image_pair_id([left, right])
-        self.assertEqual(pair_id, collage.image_pair_id([left.copy(), right.copy()]))
-        self.assertNotEqual(pair_id, collage.image_pair_id([right, left]))
+        pair_id = runs.image_pair_id([left, right])
+        self.assertEqual(pair_id, runs.image_pair_id([left.copy(), right.copy()]))
+        self.assertNotEqual(pair_id, runs.image_pair_id([right, left]))
         right.putpixel((0, 0), (255, 0, 0))
-        self.assertNotEqual(pair_id, collage.image_pair_id([left, right]))
+        self.assertNotEqual(pair_id, runs.image_pair_id([left, right]))
 
     def test_aim_tracks_params_metrics_images_and_closes(self):
         run = MagicMock()
@@ -68,7 +68,7 @@ class RunLoggingTests(unittest.TestCase):
         args = argparse.Namespace(seed=42)
         image = Image.new("RGB", (8, 8))
         with patch.dict("sys.modules", {"aim": aim}), redirect_stdout(io.StringIO()):
-            collage.track_aim_run(args, Path("runs/example"),
+            tracking.track_aim_run(args, Path("runs/example"),
                                   {"inference_time": 1.2, "crop_bbox": [0, 0, 8, 8]}, image, image)
         self.assertEqual(run.name, "example")
         run.__setitem__.assert_any_call("params", vars(args))
@@ -88,23 +88,23 @@ class RunLoggingTests(unittest.TestCase):
         aim.Image = MagicMock()
         stderr = io.StringIO()
         with patch.dict("sys.modules", {"aim": aim}), patch("sys.stderr", stderr):
-            collage.track_aim_run(argparse.Namespace(), Path("runs/example"), {"inference_time": 1.2}, None, None)
+            tracking.track_aim_run(argparse.Namespace(), Path("runs/example"), {"inference_time": 1.2}, None, None)
         self.assertIn("Aim tracking failed", stderr.getvalue())
         run.close.assert_called_once()
 
     def test_missing_aim_warns_without_failing(self):
         stderr = io.StringIO()
         with patch.dict("sys.modules", {"aim": None}), patch("sys.stderr", stderr):
-            collage.track_aim_run(argparse.Namespace(), Path("runs/example"), {}, None, None)
+            tracking.track_aim_run(argparse.Namespace(), Path("runs/example"), {}, None, None)
         self.assertIn("Local results are saved", stderr.getvalue())
 
     def test_default_runs_are_unique(self):
         with tempfile.TemporaryDirectory() as directory:
-            with patch.object(collage, "Path", side_effect=lambda path: Path(directory) / path):
+            with patch.object(runs, "RUNS_DIR", Path(directory) / "runs"):
                 first = argparse.Namespace(output=None, steps_dir=None, seed=42, model="sd-xl")
                 second = argparse.Namespace(output=None, steps_dir=None, seed=42, model="sd-xl")
-                first_dir, _ = collage.prepare_run(first)
-                second_dir, _ = collage.prepare_run(second)
+                first_dir, _ = runs.prepare_run(first)
+                second_dir, _ = runs.prepare_run(second)
             self.assertNotEqual(first_dir, second_dir)
             self.assertRegex(first_dir.name, r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{6}_[+-]\d{4}$")
             params = json.loads((first_dir / "params.json").read_text())
@@ -117,7 +117,7 @@ class RunLoggingTests(unittest.TestCase):
             output.write_bytes(b"previous result")
             args = argparse.Namespace(output=str(output), steps_dir=None)
             with self.assertRaises(FileExistsError):
-                collage.prepare_run(args)
+                runs.prepare_run(args)
             self.assertEqual(output.read_bytes(), b"previous result")
 
     def test_main_logs_settings_metrics_and_images(self):
@@ -126,16 +126,16 @@ class RunLoggingTests(unittest.TestCase):
             input_path = root / "input.png"
             Image.new("RGB", (32, 32), "green").save(input_path)
             output = root / "run" / "result.jpg"
-            command = ["collage.py", "--images", str(input_path), str(input_path),
+            command = ["runner.py", "--images", str(input_path), str(input_path),
                        "--output", str(output), "--gap", "8", "--seed", "123",
                        "--save-intermediate"]
             perf = {"preprocessing_time": 0.1, "inference_time": 0.2, "total_time": 0.3}
-            with patch("sys.argv", command), patch.object(collage, "load_pipeline", return_value=(object(), 0.4)), \
-                    patch.object(collage, "inpaint_crop_and_patch", return_value=(Image.new("RGB", (72, 32)), perf)) as inference, \
-                    patch.object(collage, "track_aim_run") as tracking, \
-                    patch.object(collage, "assess_quality", return_value={"quality_maniqa": 0.5}) as assessment, \
+            with patch("sys.argv", command), patch.object(runner, "load_pipeline", return_value=(object(), 0.4)), \
+                    patch.object(runner, "inpaint_crop_and_patch", return_value=(Image.new("RGB", (72, 32)), perf)) as inference, \
+                    patch.object(runner, "track_aim_run") as tracking, \
+                    patch.object(runner, "assess_quality", return_value={"quality_maniqa": 0.5}) as assessment, \
                     redirect_stdout(io.StringIO()):
-                collage.main()
+                runner.main()
             tracking.assert_called_once()
             assessment.assert_called_once()
             params = json.loads((output.parent / "params.json").read_text())
@@ -147,7 +147,7 @@ class RunLoggingTests(unittest.TestCase):
                                 "model": "sd-xl", "save_steps": False, "save_every": 1,
                                 "height": None}.items():
                 self.assertEqual(params[name], value, name)
-            self.assertEqual(params["model_id"], collage.AVAILABLE_MODELS["sd-xl"])
+            self.assertEqual(params["model_id"], runner.AVAILABLE_MODELS["sd-xl"])
             self.assertEqual(inference.call_args.kwargs["strength"], params["strength"])
             self.assertEqual(inference.call_args.kwargs["max_crop_size"], params["max_crop_size"])
             self.assertEqual(metrics["model_load_time"], 0.4)
@@ -158,7 +158,7 @@ class RunLoggingTests(unittest.TestCase):
             for name in ("result.jpg", "result_comparison.png", "collage_canvas.png", "collage_mask.png"):
                 self.assertTrue((output.parent / name).is_file(), name)
             with self.assertRaises(FileExistsError):
-                collage.prepare_run(argparse.Namespace(**params))
+                runs.prepare_run(argparse.Namespace(**params))
 
     def test_crop_debug_images_use_run_directory(self):
         class FakePipeline:
@@ -167,7 +167,7 @@ class RunLoggingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, redirect_stdout(io.StringIO()):
             image = Image.new("RGB", (1632, 1024), "green")
-            mask = collage.create_blend_mask(image.size, 776, 80)
+            mask = runner.create_blend_mask(image.size, 776, 80)
             result, perf = inpaint_crop_and_patch(FakePipeline(), image, mask, "landscape", debug_dir=directory)
             self.assertEqual(result.size, image.size)
             self.assertTrue(all(type(value) is int for value in perf["crop_bbox"]))

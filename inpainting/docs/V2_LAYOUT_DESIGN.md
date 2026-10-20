@@ -14,8 +14,8 @@ Extend the MVP (2-image horizontal blend) to support:
 
 Complete MVP first:
 
-- `inpainting/collage.py` - basic 2-image horizontal blend working
-- `inpainting/inpainting_utils.py` - blend mask utilities
+- `inpaint_lab/runner.py` - basic 2-image horizontal blend working
+- `inpaint_lab/inpaint.py` - blend mask utilities
 
 ---
 
@@ -189,7 +189,7 @@ flowchart TD
 
 ### Phase 1: Layout Engine
 
-Create `LayoutEngine` class in `inpainting/layout_engine.py`:
+Create `LayoutEngine` class in `inpaint_lab/layout.py`:
 
 ```python
 class LayoutEngine:
@@ -222,7 +222,7 @@ class LayoutResult:
 
 ### Phase 2: Multi-Zone Mask Generator
 
-Extend `inpainting_utils.py`:
+Extend `inpaint_lab/inpaint.py`:
 
 ```python
 def create_multi_zone_mask(
@@ -258,19 +258,19 @@ Two approaches to evaluate:
 
 ```bash
 # Horizontal strip (default for 2-3 images)
-python collage.py --images a.jpg b.jpg c.jpg --layout horizontal
+python -m inpaint_lab run --images a.jpg b.jpg c.jpg --layout horizontal
 
 # Vertical strip  
-python collage.py --images a.jpg b.jpg c.jpg --layout vertical
+python -m inpaint_lab run --images a.jpg b.jpg c.jpg --layout vertical
 
 # Grid (auto-calculates rows/cols)
-python collage.py --images a.jpg b.jpg c.jpg d.jpg --layout grid
+python -m inpaint_lab run --images a.jpg b.jpg c.jpg d.jpg --layout grid
 
 # Auto-detect best layout
-python collage.py --images a.jpg b.jpg c.jpg d.jpg --layout auto
+python -m inpaint_lab run --images a.jpg b.jpg c.jpg d.jpg --layout auto
 
 # Specify grid dimensions
-python collage.py --images *.jpg --layout grid --rows 2 --cols 3
+python -m inpaint_lab run --images *.jpg --layout grid --rows 2 --cols 3
 ```
 
 ---
@@ -302,11 +302,11 @@ def auto_detect_layout(images: List[Image]) -> str:
 
 |------|--------|
 
-| `inpainting/layout_engine.py` | Create new (layout calculations) |
+| `inpaint_lab/layout.py` | Create new (layout calculations) |
 
-| `inpainting/inpainting_utils.py` | Add multi-zone mask generator |
+| `inpaint_lab/inpaint.py` | Add multi-zone mask generator |
 
-| `inpainting/collage.py` | Extend CLI, integrate LayoutEngine |
+| `inpaint_lab/runner.py` | Extend CLI, integrate LayoutEngine |
 
 ---
 

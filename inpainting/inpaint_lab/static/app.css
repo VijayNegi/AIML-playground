@@ -1,0 +1,83 @@
+/* Shared styles for the local review and batch pages. Page-specific rules are scoped by body class. */
+
+/* Base */
+body {font:16px system-ui;margin:24px auto;padding:0 16px;color:#20242a}
+button,input,select,textarea {font:inherit}
+textarea {width:100%;box-sizing:border-box}
+pre {white-space:pre-wrap;overflow-wrap:anywhere}
+table {width:100%;border-collapse:collapse}
+th,td {text-align:left}
+nav {margin-bottom:8px}
+#message {white-space:pre-wrap}
+#message.error {color:#9d1728}
+
+/* Review page */
+.review-page {max-width:1100px}
+.review-page img {width:100%;height:auto}
+.review-page fieldset {margin:16px 0}
+.review-page label {margin-right:12px}
+.review-page table {overflow-wrap:anywhere}
+.review-page th,.review-page td {padding:8px;border:1px solid #ccc}
+.review-page details {margin:16px 0}
+.review-page small {font-weight:normal;overflow-wrap:anywhere}
+
+.quality-panel {font-size:14px;border:1px solid #ccc;border-radius:8px;padding:12px;margin:16px 0}
+.quality-panel h2 {font-size:18px;margin:0 0 8px}
+.quality-group {border-top:1px solid #ddd;padding:8px 0}
+.quality-group h3 {font-size:15px;margin:4px 0 8px}
+.quality-group p {margin:6px 0;line-height:1.4}
+.gap-quality {border-left:4px solid #1468ac;padding-left:10px}
+.metric-table {overflow-x:auto}
+.review-page .quality-panel th,.review-page .quality-panel td {padding:4px 6px}
+.quality-panel .metric-highlight {margin:0;font:inherit}
+
+.comparison-frame {position:relative}
+.comparison-frame img {display:block}
+#metric-overlay {position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.metric-highlight {margin-top:8px}
+.metric-highlight[aria-pressed="true"] {outline:3px solid #1468ac}
+
+.metric-workspace {display:grid;grid-template-columns:minmax(0,1fr) 112px;grid-template-rows:auto auto auto;gap:4px 8px;
+  max-width:calc(55vh * var(--image-aspect,1.6) + 120px)}
+.top-ranges {grid-area:1/1}
+.tile-heading {grid-area:1/2;align-self:end;font-size:13px}
+.comparison-frame {grid-area:2/1}
+.tile-rail {grid-area:2/2;position:relative;font-size:12px}
+.bottom-ranges {grid-area:3/1}
+.range-row {font-size:12px;margin:3px 0}
+.range-row button {font:inherit;margin:0 2px;padding:1px 4px}
+.range-track {height:12px;position:relative;background:#f4f4f4}
+.range-track span {position:absolute;top:2px;height:7px;border:1px solid #1468ac;border-left-width:3px;border-right-width:3px;
+  box-sizing:border-box;background:#1473e61a}
+.tile-connectors {position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.tile-connectors line {stroke:#888;stroke-width:1;vector-effect:non-scaling-stroke}
+.tile-value {position:absolute;left:24%;transform:translateY(-50%);font:inherit;margin:0;padding:2px 4px;white-space:nowrap}
+.range-help {font-size:12px}
+@media (max-width:600px) {
+  .metric-workspace {grid-template-columns:minmax(0,1fr) 80px}
+  .tile-value {font-size:10px;padding:1px 2px}
+}
+
+/* Batch page */
+.batch-page {max-width:1200px}
+.batch-page h2 {margin-top:24px}
+.batch-page button {padding:6px 12px;cursor:pointer}
+.batch-page button:disabled {cursor:default}
+.batch-page label {display:block;margin:8px 0}
+.batch-page input[type=text],.batch-page input[type=number],.batch-page select,.batch-page textarea {max-width:100%;box-sizing:border-box;padding:5px}
+.batch-page fieldset {border:1px solid #ccc;border-radius:8px;margin:12px 0;padding:12px}
+.batch-page th,.batch-page td {padding:7px;border-bottom:1px solid #ddd}
+.batch-page small {color:#525b66}
+.inputs {display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.inputs img {display:block;max-width:100%;height:160px;object-fit:contain;margin:8px auto}
+.inputs select {width:100%}
+.scroll {overflow:auto;max-height:380px}
+.actions {display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.summary {padding:12px;background:#f2f5f8;border-radius:8px;white-space:pre-line}
+progress {width:100%;height:20px}
+.history-item {text-align:left;display:block;width:100%;margin:5px 0}
+@media (max-width:650px) {
+  .inputs {grid-template-columns:1fr}
+  .batch-page th,.batch-page td {padding:4px}
+  .batch-page input {width:100%}
+}

@@ -1,5 +1,6 @@
+import {api, message} from '/static/common.js';
+
 const form = document.getElementById('builder');
-const token = document.querySelector('meta[name="csrf-token"]').content;
 const specifications = [
   ['gap', 'Gap (px)', 1, 224, 1], ['feather', 'Feather (px)', 0, 1024, 1],
   ['steps', 'Steps', 2, 1000, 1], ['guidance_scale', 'Guidance', 0, 50, 0.1], ['seed', 'Seed', 0, 4294967295, 1]
@@ -9,17 +10,6 @@ let selectedId = '';
 let history = [];
 let polling = false;
 
-function message(text, error = false) {
-  const node = document.getElementById('message');
-  node.textContent = text;
-  node.className = error ? 'error' : '';
-}
-async function api(path, data) {
-  const response = await fetch(path, data === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': token}, body: JSON.stringify(data)});
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Request failed');
-  return result;
-}
 function duration(seconds) {
   if (seconds === null || seconds === undefined) return 'unknown';
   const value = Math.ceil(seconds);

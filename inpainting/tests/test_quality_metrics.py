@@ -13,10 +13,10 @@ import numpy as np
 from PIL import Image
 import torch
 
-from compare_quality import correlations, spearman
-from quality_metrics import assess_quality, diagnostics, maniqa_score, maniqa_tiles
-from inpainting_utils import create_blend_mask
-from review_runs import metric_regions
+from inpaint_lab.compare import correlations, spearman
+from inpaint_lab.quality import assess_quality, diagnostics, maniqa_score, maniqa_tiles
+from inpaint_lab.canvas import create_blend_mask
+from inpaint_lab.review_api import metric_regions
 
 
 class QualityTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class QualityTests(unittest.TestCase):
         pyiqa = types.ModuleType("pyiqa")
         pyiqa.create_metric = MagicMock(return_value=metric)
         cache = {}
-        with patch.dict("sys.modules", {"pyiqa": pyiqa}), patch("quality_metrics.version", return_value="test"):
+        with patch.dict("sys.modules", {"pyiqa": pyiqa}), patch("inpaint_lab.quality.version", return_value="test"):
             for _ in range(2):
                 scores = maniqa_score(Image.new("RGB", (224, 224)), 80, 64, Path("unused"), model_cache=cache)
         pyiqa.create_metric.assert_called_once()
@@ -82,7 +82,7 @@ class QualityTests(unittest.TestCase):
         pyiqa = types.ModuleType("pyiqa")
         pyiqa.create_metric = MagicMock(return_value=metric)
         with tempfile.TemporaryDirectory() as directory, patch.dict("sys.modules", {"pyiqa": pyiqa}), \
-                patch("quality_metrics.version", return_value="test"):
+                patch("inpaint_lab.quality.version", return_value="test"):
             scores = maniqa_score(Image.new("RGB", (1632, 1024)), 776, 80, Path(directory))
             self.assertEqual(scores["quality_maniqa_tiles"][0]["bbox"], [704, 0, 928, 224])
             self.assertEqual(scores["quality_maniqa_tiles"][-1]["bbox"], [704, 800, 928, 1024])
@@ -113,7 +113,7 @@ class QualityTests(unittest.TestCase):
 
     def test_model_failure_keeps_diagnostics(self):
         image = Image.new("RGB", (64, 32))
-        with patch("quality_metrics.maniqa_score", side_effect=RuntimeError("offline")), redirect_stdout(io.StringIO()):
+        with patch("inpaint_lab.quality.maniqa_score", side_effect=RuntimeError("offline")), redirect_stdout(io.StringIO()):
             scores = assess_quality(image, image, 28, 8, 4, None, Path("unused"))
         self.assertEqual(scores["quality_maniqa_error"], "offline")
         self.assertEqual(scores["quality_preservation_mae"], 0)

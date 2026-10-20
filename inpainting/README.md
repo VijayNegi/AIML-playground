@@ -5,14 +5,55 @@ ongoing; multi-image and vertical/grid layouts are planned, not implemented.
 
 ## Folder layout
 
-- Python scripts remain in this directory so existing imports still work.
-- `docs/`: performance and PyTorch guides, v2 design, and an example command.
-- `samples/`: reusable source images, split inputs, and an existing input mask.
-- `runs/`: existing experiment outputs, sweep folders, debug images, and diffusion
-  steps. Files retain their original names; missing settings are not inferred.
+```text
+inpainting/
+  inpaint_lab/          application package (python -m inpaint_lab ...)
+    config.py           project paths: samples/, runs/, .aim/, batches.json
+    models.py           model registry and pipeline loading
+    canvas.py           collage canvas layout and feathered blend masks
+    inpaint.py          crop-and-patch inference
+    runner.py           one collage run: CLI, execution, saving
+    runs.py             run folders, input identity, pending reviews
+    quality.py          seam/preservation diagnostics and tiled MANIQA
+    tracking.py         Aim logging and review sync
+    compare.py          score-versus-review correlation report
+    batches.py          batch planning, estimates, worker
+    server.py           local HTTP server: pages, /static/, API dispatch
+    review_api.py       review JSON API and highlight geometry
+    batch_api.py        batch JSON API
+    static/             browser UI: HTML, JS modules, CSS (no build step)
+  scripts/              standalone diagnostics and utilities
+  tests/                unit tests (no model downloads)
+  docs/                 guides, plans, v2 design, example command
+  samples/              reusable input images
+  runs/  .aim/  batches.json   local data, Git-ignored
+```
 
-`runs/` is ignored by Git, not deleted. Back it up separately. Samples and docs
-are not ignored, but this reorganization does not stage or commit them.
+Data paths resolve from the project root, not the shell's working directory.
+Back up `runs/`, `.aim/`, and `batches.json` together; they are not in Git.
+
+The web UI is separate from Python code: `static/review.html` and
+`static/batch.html` are plain pages; `review.js`, `batch.js`, and the shared
+`common.js` are ES modules that call the JSON APIs; `app.css` holds all styles.
+Edit them directly and refresh the browser — no Node or bundler is needed. The
+server only fills in the CSRF token and serves `.js`/`.css` from that folder.
+
+### Commands
+
+Run everything from `inpainting/` after activating the virtual environment:
+
+| Task | Command |
+| --- | --- |
+| Generate a collage | `python -m inpaint_lab run --images LEFT RIGHT [options]` |
+| Review and batch web app | `python -m inpaint_lab serve` |
+| Score/review correlations | `python -m inpaint_lab compare` |
+| Split an image for testing | `python -m scripts.image_splitter --input IMAGE` |
+| Compare inpainting models | `python -m scripts.compare_models --input IMAGE --mask MASK` |
+| GPU diagnostics | `python -m scripts.gpu_diagnostic` / `python -m scripts.quick_gpu_test` |
+| Tests | `python -m unittest discover tests` |
+
+The former `collage.py`, `review_runs.py`, and `compare_quality.py` commands
+were replaced by these subcommands; their options are unchanged.
 
 ## Install dependencies
 
@@ -39,7 +80,7 @@ Fractional seconds keep rapid runs distinct. Existing run folders retain their n
 
 ```bash
 source ../.venv/bin/activate
-python collage.py \
+python -m inpaint_lab run \
   --images samples/split_main_1024_left.png samples/split_main_1024_right.png \
   --prompt "a green landscape" \
   --gap 80
@@ -71,7 +112,7 @@ first and install dependencies:
 ```bash
 source ../.venv/bin/activate
 python -m pip install -r requirements.txt
-python collage.py \
+python -m inpaint_lab run \
   --images samples/split_main_1024_left.png samples/split_main_1024_right.png \
   --prompt "a green landscape" --gap 80
 aim up --repo . --host 127.0.0.1
@@ -113,7 +154,7 @@ Review completed runs that do not yet have `review.json`:
 
 ```bash
 source ../.venv/bin/activate
-python review_runs.py
+python -m inpaint_lab serve
 ```
 
 The script opens `http://127.0.0.1:8765/` in your browser. The page shows each
@@ -258,7 +299,7 @@ then print a CSV correlation report:
 
 ```bash
 source ../.venv/bin/activate
-python compare_quality.py
+python -m inpaint_lab compare
 ```
 
 The report computes Spearman rank correlations with tie handling, separately for
@@ -280,7 +321,7 @@ Use the same local server; no additional dependencies are needed:
 
 ```bash
 source ../.venv/bin/activate
-python review_runs.py
+python -m inpaint_lab serve
 ```
 
 Open **http://127.0.0.1:8765/batches**, or choose **Batch builder & history** in
@@ -357,18 +398,22 @@ additional timing fields needed to improve estimates.
 
 ## Checks
 
-Check run logging without GPU inference:
+Run all tests without GPU inference or model downloads:
 
 ```bash
 source ../.venv/bin/activate
-python -m unittest test_run_logging test_review_runs test_quality_metrics test_batch_runs
+python -m unittest discover tests
 ```
+
+If Google Chrome or Chromium is installed, the page tests also load the review
+and batch pages headlessly and check the rendered output; otherwise they are skipped.
 
 ## Documentation
 
 - [Performance guide](docs/PERFORMANCE_GUIDE.md)
 - [PyTorch upgrade guide](docs/PYTORCH_UPGRADE.md)
-- [v2 design](docs/inpainting_temp.txt)
+- [v2 design](docs/V2_LAYOUT_DESIGN.md)
+- [Batch sweep plan](docs/BATCH_SWEEPS_PLAN.md)
 - [Example command](docs/inpaintint_cmd.txt)
 
 The existing performance guide references `benchmark_performance.py`, which is

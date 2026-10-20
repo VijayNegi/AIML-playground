@@ -20,6 +20,13 @@ from PIL import Image
 PARAMETERS = {"gap": (int, 1, 224), "feather": (int, 0, 1024), "steps": (int, 2, 1000),
               "guidance_scale": (float, 0, 50), "seed": (int, 0, 2**32 - 1)}
 MAX_JOBS = 1000
+# Modules whose changes alter generated images or scores; resuming across them would mix protocols.
+INFERENCE_MODULES = ("runner.py", "models.py", "canvas.py", "inpaint.py", "quality.py", "runs.py")
+
+
+def software_signature():
+    package = Path(__file__).resolve().parent
+    return hashlib.sha256(b"".join((package / name).read_bytes() for name in INFERENCE_MODULES)).hexdigest()
 
 
 def now():
@@ -52,8 +59,10 @@ def number(name, value):
 
 
 def preview_batch(root, definition):
-    from collage import AVAILABLE_MODELS, image_pair_id, parse_collage_args
-    from quality_metrics import maniqa_tiles
+    from inpaint_lab.models import AVAILABLE_MODELS
+    from inpaint_lab.runner import parse_collage_args
+    from inpaint_lab.runs import image_pair_id
+    from inpaint_lab.quality import maniqa_tiles
 
     if not isinstance(definition, dict) or set(definition) - {"name", "images", "baseline", "sweeps", "mode", "allow_legacy_timings"}:
         raise ValueError("Invalid batch definition or unsupported fields")
@@ -132,13 +141,12 @@ def preview_batch(root, definition):
                      "status": "pending", "attempts": []})
     return {"name": name.strip(), "definition": deepcopy(definition), "input_hashes": hashes,
             "jobs": jobs, "status": "paused", "created_at": now(), "elapsed_seconds": 0.0,
-            "software_signature": hashlib.sha256(b"".join(Path(__file__).with_name(name).read_bytes()
-                                      for name in ("collage.py", "quality_metrics.py", "inpainting_utils.py"))).hexdigest()}
+            "software_signature": software_signature()}
 
 
 def estimate_jobs(root, jobs, hardware, allow_legacy=False, include_loads=True):
     """Use matched observed timings; unknown components remain explicitly unknown."""
-    from quality_metrics import QUALITY_VERSION
+    from inpaint_lab.quality import QUALITY_VERSION
 
     history = []
     for path in (root / "runs").glob("*/metrics.json"):
@@ -273,9 +281,7 @@ class BatchManager:
                 raise ValueError("Unknown batch action")
             if self.closing or (self.thread and self.thread.is_alive()):
                 raise ValueError("A batch worker is already active; pause it first")
-            signature = hashlib.sha256(b"".join(Path(__file__).with_name(name).read_bytes()
-                                       for name in ("collage.py", "quality_metrics.py", "inpainting_utils.py"))).hexdigest()
-            if signature != batch["software_signature"]:
+            if software_signature() != batch["software_signature"]:
                 raise ValueError("Inference/scoring code changed; create a new batch instead of mixing protocols")
             paths = batch["jobs"][0]["params"]["images"]
             if [file_hash(path) for path in paths] != batch["input_hashes"]:
@@ -302,7 +308,7 @@ class BatchManager:
     def work(self, batch):
         resources = {}
         try:
-            from collage import run_collage
+            from inpaint_lab.runner import run_collage
             runner = self.runner or run_collage
             while True:
                 with self.lock:

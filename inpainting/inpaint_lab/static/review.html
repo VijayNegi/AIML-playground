@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="__TOKEN__">
+  <title>Inpainting review</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="review-page">
+  <nav><a href="/">Human review</a> · <a href="/batches">Batch builder &amp; history</a></nav>
+  <p id="message" role="status" aria-live="polite"></p>
+  <h1 id="all-done" hidden>All available runs reviewed</h1>
+  <main id="review" hidden>
+    <h1>Visual review</h1>
+    <p id="pending-count"></p>
+    <form id="run-picker"><label>Choose run <select name="run"></select></label><button>Open</button></form>
+    <h2 id="run-name"></h2>
+    <details><summary>All settings</summary><pre id="settings"></pre></details>
+    <p>Showing: <strong id="image-view-label">Output</strong>. Input is the assembled canvas before inpainting. Click image for full resolution.</p>
+    <button type="button" id="flip-image">Show input</button>
+    <p class="range-help">Range markers use image coordinates. L/R = left/right. Color = Lab difference; extra edge = sharper than nearby edges. Hover/focus or select values to inspect. MANIQA: higher is better.</p>
+    <div class="metric-workspace">
+      <div class="top-ranges" id="top-ranges"></div>
+      <strong class="tile-heading">MANIQA tiles</strong>
+      <div class="comparison-frame">
+        <a id="full-image-link" target="_blank" rel="noopener"><img id="comparison-image" alt="Inpainted output"></a>
+        <svg id="metric-overlay" aria-hidden="true"></svg>
+      </div>
+      <aside class="tile-rail" id="tile-rail" aria-label="MANIQA tile scores aligned to image height"></aside>
+      <div class="bottom-ranges" id="bottom-ranges"></div>
+    </div>
+    <p id="highlight-status" role="status">Hover or focus a metric button to preview its measured area. Click to keep it selected.</p>
+    <button type="button" id="clear-highlight">Clear highlight</button>
+    <section id="scores" class="quality-panel" aria-labelledby="automatic-heading"></section>
+    <form id="review-form">
+      <div id="rating-fields"></div>
+      <p><label>Notes<br><textarea name="notes" rows="3" maxlength="10000"></textarea></label></p>
+      <button>Save review and sync to Aim</button> <a id="skip-link" href="/">Skip / next</a>
+    </form>
+  </main>
+  <script type="module" src="/static/review.js"></script>
+</body>
+</html>

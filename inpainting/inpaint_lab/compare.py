@@ -9,7 +9,8 @@ import sys
 
 import numpy as np
 
-from review_runs import RATINGS
+from inpaint_lab.config import RUNS_DIR
+from inpaint_lab.runs import RATINGS
 
 
 def spearman(values, ratings):
@@ -59,7 +60,7 @@ def correlations(runs_dir):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--runs-dir", type=Path, default=Path(__file__).resolve().parent / "runs")
+    parser.add_argument("--runs-dir", type=Path, default=RUNS_DIR)
     args = parser.parse_args()
     if not args.runs_dir.is_dir():
         parser.error(f"Runs directory not found: {args.runs_dir}")

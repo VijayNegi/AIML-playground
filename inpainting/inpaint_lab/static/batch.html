@@ -5,22 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="csrf-token" content="__TOKEN__">
   <title>Inpainting batches</title>
-  <style>
-    body {font:16px system-ui;max-width:1200px;margin:24px auto;padding:0 16px;color:#20242a}
-    h2 {margin-top:24px} button,input,select,textarea {font:inherit} button {padding:6px 12px;cursor:pointer}
-    label {display:block;margin:8px 0} input[type=text],input[type=number],select,textarea {max-width:100%;box-sizing:border-box;padding:5px}
-    textarea {width:100%} fieldset {border:1px solid #ccc;border-radius:8px;margin:12px 0;padding:12px}
-    .inputs {display:grid;grid-template-columns:1fr 1fr;gap:16px}.inputs img {display:block;max-width:100%;height:160px;object-fit:contain;margin:8px auto}
-    .inputs select {width:100%} table {width:100%;border-collapse:collapse} th,td {text-align:left;padding:7px;border-bottom:1px solid #ddd}
-    .scroll {overflow:auto;max-height:380px} .actions {display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-    .summary {padding:12px;background:#f2f5f8;border-radius:8px;white-space:pre-line}
-    #message {white-space:pre-wrap} #message.error {color:#9d1728} progress {width:100%;height:20px}
-    .history-item {text-align:left;display:block;width:100%;margin:5px 0} small {color:#525b66}
-    button:disabled {cursor:default} pre {white-space:pre-wrap;overflow-wrap:anywhere}
-    @media(max-width:650px) {.inputs {grid-template-columns:1fr} th,td {padding:4px} input {width:100%}}
-  </style>
+  <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body class="batch-page">
   <nav><a href="/">Human review</a> · <a href="/batches">Batch builder &amp; history</a></nav>
   <h1>Inpainting batches</h1>
   <p>One local worker. Pause finishes the current job first. Closing this tab does not stop a batch.</p>
@@ -52,6 +39,6 @@
     <details><summary>Saved batch definition</summary><pre id="definition"></pre></details>
     <div class="scroll"><table><thead><tr><th>Configuration</th><th>Settings</th><th>Status</th><th>Attempts / results / errors</th></tr></thead><tbody id="batch-jobs"></tbody></table></div>
   </section>
-  <script src="/batch.js" defer></script>
+  <script type="module" src="/static/batch.js"></script>
 </body>
 </html>

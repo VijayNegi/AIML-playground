@@ -4,7 +4,7 @@ Quick GPU Test for Inpainting
 A minimal test to verify GPU is being used properly.
 
 Usage:
-    python quick_gpu_test.py
+    python -m scripts.quick_gpu_test
 """
 
 import torch
@@ -92,7 +92,7 @@ def quick_test():
     print("TEST PASSED!")
     print("=" * 60)
     print("\nIf GPU-Util was 0% during inference, check:")
-    print("1. Run the full diagnostic: python gpu_diagnostic.py")
+    print("1. Run the full diagnostic: python -m scripts.gpu_diagnostic")
     print("2. Reinstall PyTorch with CUDA support")
     print("3. Check GPU_TROUBLESHOOTING.md for detailed guide")
     

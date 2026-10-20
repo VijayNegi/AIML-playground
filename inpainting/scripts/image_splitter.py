@@ -10,16 +10,16 @@ This utility helps prepare test images by:
 
 Usage:
     # Split horizontally (left/right) with default 80px skip
-    python image_splitter.py --input photo.jpg --split horizontal
+    python -m scripts.image_splitter --input photo.jpg --split horizontal
     
     # Split vertically (top/bottom) with custom skip
-    python image_splitter.py --input photo.jpg --split vertical --skip 100
+    python -m scripts.image_splitter --input photo.jpg --split vertical --skip 100
     
     # Resize to specific width before splitting
-    python image_splitter.py --input photo.jpg --width 1024 --split horizontal
+    python -m scripts.image_splitter --input photo.jpg --width 1024 --split horizontal
     
     # Resize to specific height before splitting
-    python image_splitter.py --input photo.jpg --height 512 --split vertical
+    python -m scripts.image_splitter --input photo.jpg --height 512 --split vertical
 
 Output:
     Creates two files: {input_name}_left.png, {input_name}_right.png (horizontal)
@@ -45,16 +45,16 @@ def parse_args():
         epilog="""
 Examples:
     # Basic horizontal split
-    python image_splitter.py --input beach.jpg --split horizontal
+    python -m scripts.image_splitter --input beach.jpg --split horizontal
     
     # Split with larger gap to skip
-    python image_splitter.py --input landscape.jpg --split horizontal --skip 150
+    python -m scripts.image_splitter --input landscape.jpg --split horizontal --skip 150
     
     # Resize to width first, then split
-    python image_splitter.py --input large_photo.jpg --width 1920 --split horizontal
+    python -m scripts.image_splitter --input large_photo.jpg --width 1920 --split horizontal
     
     # Vertical split for testing top/bottom blending
-    python image_splitter.py --input tall_image.jpg --split vertical --skip 100
+    python -m scripts.image_splitter --input tall_image.jpg --split vertical --skip 100
         """
     )
     
@@ -286,7 +286,7 @@ def main():
     
     if is_horizontal:
         print(f"""
-python collage.py \\
+python -m inpaint_lab run \\
     --images "{output1}" "{output2}" \\
     --prompt "your scene description" \\
     --gap {args.skip}
@@ -297,7 +297,7 @@ Note: Current collage.py only supports horizontal blending.
 For vertical blending, you'll need the v2 multi-layout feature.
 
 To test horizontally, run:
-python image_splitter.py --input {args.input} --split horizontal
+python -m scripts.image_splitter --input {args.input} --split horizontal
 """)
     
     return 0

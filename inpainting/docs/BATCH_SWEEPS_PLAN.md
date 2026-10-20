@@ -119,7 +119,7 @@ input identity, not timestamps or output paths.
 ### Execution and Model Reuse
 
 Inspect the current callers before extracting the smallest shared single-run
-execution function from `collage.py`. Both the existing CLI and batch runner should
+execution function from `inpaint_lab/runner.py`. Both the existing CLI and batch runner should
 use it so generation, logging, quality assessment, and error handling stay aligned.
 
 - Process configurations sequentially.
@@ -179,7 +179,7 @@ and images at least 224×224. Unsupported assessment geometry must produce a cle
 assessment error rather than a misleading score.
 
 Filter runs by batch ID and input-pair ID in Aim. Existing browser reviews remain
-the human check. Use `compare_quality.py` for exploratory within-pair correlations;
+the human check. Use `python -m inpaint_lab compare` for exploratory within-pair correlations;
 do not pool incompatible score versions or learn weights from the same image pairs
 used to judge the resulting ranking.
 
