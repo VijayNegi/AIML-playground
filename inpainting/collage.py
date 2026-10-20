@@ -44,6 +44,8 @@ import hashlib
 import os
 from pathlib import Path
 import sys
+import time
+import platform
 from PIL import Image
 from quality_metrics import assess_quality
 
@@ -57,7 +59,7 @@ from inpainting_utils import (
 )
 
 
-def parse_collage_args():
+def parse_collage_args(argv=None):
     """Parse command line arguments for the collage tool."""
     parser = argparse.ArgumentParser(
         description="Create seamless photo collages with AI-powered blending",
@@ -189,7 +191,7 @@ Examples:
     )
 
     
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def create_collage_canvas(
@@ -293,6 +295,7 @@ def prepare_run(args):
 def track_aim_run(args, run_dir, perf, result, comparison):
     """Mirror a completed local run into Aim without risking saved results."""
     run = None
+    aim_hash = None
     try:
         from aim import Run, Image as AimImage
 
@@ -311,6 +314,7 @@ def track_aim_run(args, run_dir, perf, result, comparison):
         run.track(AimImage(result), name="output", step=0)
         run.track(AimImage(comparison), name="comparison", step=0)
         print(f"Aim run: {run.hash}")
+        aim_hash = str(run.hash)
     except Exception as error:
         print(f"Warning: Aim tracking failed: {error}. Local results are saved in {run_dir}", file=sys.stderr)
     finally:
@@ -318,12 +322,22 @@ def track_aim_run(args, run_dir, perf, result, comparison):
             try:
                 run.close()
             except Exception as error:
+                aim_hash = None
                 print(f"Warning: Aim close failed: {error}", file=sys.stderr)
+    return aim_hash
 
 
-def main():
-    """Main function for the seamless collage tool."""
-    args = parse_collage_args()
+def hardware_id():
+    """Keep timing history separate across machines and accelerator/software changes."""
+    import torch
+    device = torch.cuda.get_device_name(0) if torch.cuda.is_available() else (
+        "mps" if torch.backends.mps.is_available() else "cpu")
+    return hashlib.sha256(f"{platform.node()}|{platform.machine()}|{device}|{torch.__version__}".encode()).hexdigest()
+
+
+def run_collage(args, resources=None):
+    """Execute one run; an optional batch-owned cache retains loaded models."""
+    wall_start = time.perf_counter()
     
     print("=" * 60)
     print("Seamless Photo Collage")
@@ -333,7 +347,7 @@ def main():
     for img_path in args.images:
         if not os.path.exists(img_path):
             print(f"Error: Image not found: {img_path}")
-            sys.exit(1)
+            raise FileNotFoundError(img_path)
     
     # Load input images
     print(f"\nLoading images...")
@@ -374,7 +388,12 @@ def main():
     print(f"\nLoading inpainting model: {args.model}")
     print("-" * 40)
     model_id = args.model_id
-    pipe, load_time = load_pipeline(model_id)
+    if resources is not None and resources.get("model_id") == model_id:
+        pipe, load_time = resources["pipeline"], 0.0
+    else:
+        pipe, load_time = load_pipeline(model_id)
+        if resources is not None:
+            resources.update(model_id=model_id, pipeline=pipe)
     print(f"Model loaded in {load_time:.2f}s")
     
     # Perform inpainting using crop-and-patch (no resizing, max 1024x1024 crop)
@@ -404,6 +423,7 @@ def main():
     perf['model_load_time'] = load_time
     perf['adjusted_gap'] = adjusted_gap
     perf['canvas_size'] = list(canvas.size)
+    perf['hardware_id'] = hardware_id()
     # Save the result
     result.save(args.output)
     print(f"\n✓ Seamless collage saved to: {args.output}")
@@ -411,7 +431,8 @@ def main():
     try:
         perf.update(assess_quality(canvas, result, gap_x_start, adjusted_gap,
                                    args.feather, perf.get("crop_bbox"), run_dir,
-                                   mask=mask, mask_binarized=perf.get("mask_binarized", False)))
+                                   mask=mask, mask_binarized=perf.get("mask_binarized", False),
+                                   model_cache=resources))
     except Exception as error:
         perf["quality_error"] = str(error)
         print(f"Warning: Quality diagnostics failed: {error}. Output is saved.")
@@ -440,11 +461,22 @@ def main():
     comparison.save(comparison_path)
     print(f"  Comparison saved to: {comparison_path}")
 
-    track_aim_run(args, run_dir, perf, result, comparison)
+    aim_hash = track_aim_run(args, run_dir, perf, result, comparison)
+    perf["aim_status"] = "logged" if aim_hash else "failed"
+    perf["wall_time"] = time.perf_counter() - wall_start
+    temporary = run_dir / "metrics.json.tmp"
+    temporary.write_text(json.dumps(perf, indent=2) + "\n")
+    temporary.replace(run_dir / "metrics.json")
     
     print("\n" + "=" * 60)
     print("Done!")
     print("=" * 60)
+    return run_dir, perf
+
+
+def main():
+    """Main function for the seamless collage tool."""
+    run_collage(parse_collage_args())
 
 
 if __name__ == "__main__":

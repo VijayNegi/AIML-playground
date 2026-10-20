@@ -20,6 +20,17 @@ from review_runs import metric_regions
 
 
 class QualityTests(unittest.TestCase):
+    def test_batch_maniqa_model_is_loaded_once(self):
+        metric = MagicMock(return_value=torch.tensor(0.7))
+        metric.lower_better = False
+        pyiqa = types.ModuleType("pyiqa")
+        pyiqa.create_metric = MagicMock(return_value=metric)
+        cache = {}
+        with patch.dict("sys.modules", {"pyiqa": pyiqa}), patch("quality_metrics.version", return_value="test"):
+            for _ in range(2):
+                scores = maniqa_score(Image.new("RGB", (224, 224)), 80, 64, Path("unused"), model_cache=cache)
+        pyiqa.create_metric.assert_called_once()
+        self.assertEqual(scores["quality_model_load_time"], 0)
     def test_feather_edges_follow_actual_mask_and_model_threshold(self):
         canvas = Image.new("RGB", (100, 32), "gray")
         for feather in (0, 10, 50):

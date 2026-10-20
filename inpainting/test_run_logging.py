@@ -18,6 +18,31 @@ from inpainting_utils import inpaint_crop_and_patch
 
 
 class RunLoggingTests(unittest.TestCase):
+    def test_two_runs_reuse_batch_pipeline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.png"
+            Image.new("RGB", (256, 256), "green").save(source)
+            resources = {}
+            perf = {"preprocessing_time": 0.1, "inference_time": 0.2, "total_time": 0.3}
+            with patch.object(collage, "load_pipeline", return_value=(object(), 0.4)) as loader, \
+                    patch.object(collage, "inpaint_crop_and_patch", side_effect=lambda **kwargs: (Image.new("RGB", (520, 256)), dict(perf))), \
+                    patch.object(collage, "track_aim_run", return_value="test-hash"), \
+                    patch.object(collage, "assess_quality", return_value={}) as assessment, \
+                    redirect_stdout(io.StringIO()):
+                for index in range(2):
+                    args = collage.parse_collage_args(["--images", str(source), str(source), "--gap", "8",
+                                                      "--output", str(root / f"run-{index}" / "output.png")])
+                    collage.run_collage(args, resources=resources)
+            loader.assert_called_once()
+            self.assertIs(assessment.call_args.kwargs["model_cache"], resources)
+            first = json.loads((root / "run-0/metrics.json").read_text())
+            second = json.loads((root / "run-1/metrics.json").read_text())
+            self.assertEqual(first["model_load_time"], 0.4)
+            self.assertEqual(second["model_load_time"], 0)
+            self.assertIn("hardware_id", second)
+            self.assertGreater(second["wall_time"], 0)
+
     def test_run_folder_uses_local_time_and_offset(self):
         local = datetime(2026, 10, 19, 14, 30, 5, 123456, tzinfo=timezone(timedelta(hours=5, minutes=30)))
         with tempfile.TemporaryDirectory() as directory, patch.object(collage, "datetime") as clock:

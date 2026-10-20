@@ -274,13 +274,94 @@ Test promising metrics on held-out image pairs and several seeds before using
 them for automatic selection. Browser reviews remain the human check; no learned
 ranking, combined score, or automatic winner selection is implemented.
 
+## Batch builder, pause/resume, and history
+
+Use the same local server; no additional dependencies are needed:
+
+```bash
+source ../.venv/bin/activate
+python review_runs.py
+```
+
+Open **http://127.0.0.1:8765/batches**, or choose **Batch builder & history** in
+the navigation. Select two images from `samples/` and inspect their previews.
+The generic CLI prompt is filled in automatically. Choose a fixed baseline and
+set individual parameters to **Fixed** or **Sweep**, entering comma-separated
+sweep values. Supported sweeps are gap, feather, steps, guidance, and seed.
+Model, prompt, negative prompt, and height are fixed within a batch. Strength
+remains 0.99 and the maximum model crop remains 1024 pixels.
+
+**One parameter at a time** includes the baseline and varies only one setting per
+job. **All combinations** explicitly builds a Cartesian grid. **Preview jobs &
+duration** validates and deduplicates configurations before any model loading or
+inference. Previews are limited to 1000 jobs; start with two configurations.
+Actual padded gaps must fit tiled MANIQA's 224-pixel width limit, and batch output
+height is limited to 224–1024 pixels to fit the v1 crop-and-patch workflow.
+
+Choose **Save paused** or **Create & start** after checking the preview. A single
+background worker runs jobs sequentially and reuses diffusion and MANIQA models
+within an uninterrupted execution segment. Closing a browser tab does not stop
+the worker; keep the Python server running. Avoid running a separate inference
+script at the same time if it would compete for accelerator memory.
+
+**Pause after current job** waits for inference, scoring, saving, and tracking to
+finish, then stops before the next job. It does not checkpoint diffusion midway.
+**Start / resume pending** skips verified completed jobs. **Retry failed /
+interrupted** explicitly requeues those jobs and uses fresh attempt directories,
+preserving earlier partial outputs. Pausing releases the worker's model references;
+resuming loads models again. Server shutdown waits for the current job; a crash
+or forced termination marks unfinished work interrupted on restart.
+
+The history view shows batch definitions, job settings, progress, local timestamps,
+execution time excluding pauses, failures, assessment/tracking warnings, and links
+to results. **Open output** works for reviewed runs too; the review link is for
+still-unreviewed runs. Batch JSON can be downloaded from the selected history item.
+Measured execution time cannot recover the unsaved partial duration of a job that
+was killed by a process crash; it does not include downtime as execution.
+
+### Persistence and safety
+
+`inpainting/batches.json` stores all batches, resolved jobs, statuses, attempts,
+input hashes, and output locations. Updates use atomic replacement and a process
+lock, allowing only one server to own the manifest. A corrupt or unsupported
+manifest is refused, not overwritten. Restart never automatically resumes work.
+Changes to inputs or inference/scoring source code require a new batch. Missing
+completed artifacts require an explicit retry. Run metadata includes batch and
+configuration IDs for filtering in Aim.
+
+The manifest, temporary file, and `.batches.lock` are Git-ignored. Back up
+`batches.json`, `runs/`, and `.aim/` together. Do not edit the manifest while the
+server owns it. This is a local, single-user runner, not a distributed queue.
+
+### Duration estimates
+
+The preview and selected batch history estimate inference from observed seconds
+per requested step, matching model, classifier-free-guidance mode, crop size, and
+machine/accelerator/PyTorch identity. Quality time matches the assessment version
+and scales by tile count. Loading is counted once per execution segment, and
+measured saving/tracking overhead is added separately. Remaining estimates refresh
+as new runs supply timings; current-job elapsed time is subtracted.
+
+The UI shows median-based duration, a scaled observed min–max range, sample count,
+and approximate local finish time. These are not confidence intervals or deadlines.
+Unknown components are named explicitly: the total remains **unknown** rather
+than inventing a multiplier. Known components are still shown as partial estimates.
+Uncached weight downloads, contention, power/thermal changes, and network delays
+can substantially increase runtime.
+
+Older records lack hardware identity, wall time, or MANIQA loading time. They are
+not silently assumed comparable. You can explicitly opt into legacy timings from
+this machine, but missing phases may still prevent a complete estimate. Known
+different hardware is always excluded. New single runs and batches record the
+additional timing fields needed to improve estimates.
+
 ## Checks
 
 Check run logging without GPU inference:
 
 ```bash
 source ../.venv/bin/activate
-python -m unittest test_run_logging test_review_runs test_quality_metrics
+python -m unittest test_run_logging test_review_runs test_quality_metrics test_batch_runs
 ```
 
 ## Documentation

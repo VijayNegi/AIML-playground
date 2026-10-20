@@ -1,6 +1,9 @@
 # Local experiment outputs; keep samples and documentation versioned.
 /runs/
 /.aim/
+/batches.json
+/batches.json.tmp
+/.batches.lock
 
 # Scratch files emitted into the working directory by existing scripts.
 /*.png

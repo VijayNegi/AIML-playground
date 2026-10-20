@@ -109,14 +109,23 @@ def maniqa_tiles(image_size, gap_start, gap_width):
     return [[x, y, x + TILE_SIZE, y + TILE_SIZE] for y in positions]
 
 
-def maniqa_score(result, gap_start, gap_width, run_dir):
+def maniqa_score(result, gap_start, gap_width, run_dir, model_cache=None):
     """Score native-resolution gap tiles, retaining every score and its location."""
     boxes = maniqa_tiles(result.size, gap_start, gap_width)
     import pyiqa
     import torch
 
-    metric = pyiqa.create_metric("maniqa-pipal", device="cpu", test_sample=1)
-    metric.eval()
+    if model_cache is not None and model_cache.get("maniqa_error"):
+        raise RuntimeError(model_cache["maniqa_error"])
+    metric = model_cache.get("maniqa") if model_cache is not None else None
+    load_started = time.perf_counter()
+    load_time = 0.0
+    if metric is None:
+        metric = pyiqa.create_metric("maniqa-pipal", device="cpu", test_sample=1)
+        metric.eval()
+        if model_cache is not None:
+            model_cache["maniqa"] = metric
+        load_time = time.perf_counter() - load_started
     tiles = []
     with torch.inference_mode():
         for bbox in boxes:
@@ -131,19 +140,22 @@ def maniqa_score(result, gap_start, gap_width, run_dir):
             "quality_maniqa_min": lowest["score"], "quality_maniqa_min_bbox": lowest["bbox"],
             "quality_maniqa_tiles": tiles, "quality_maniqa_tile_count": len(tiles),
             "quality_maniqa_stride": TILE_STRIDE, "quality_maniqa_aggregation": "median",
+            "quality_model_load_time": load_time,
             "quality_maniqa_model": "maniqa-pipal",
             "quality_maniqa_input_size": [224, 224], "quality_maniqa_device": "cpu",
             "quality_maniqa_test_sample": 1, "quality_pyiqa_version": version("pyiqa"),
             "quality_maniqa_lower_better": bool(metric.lower_better)}
 
 
-def assess_quality(canvas, result, gap_start, gap_width, feather, crop_bbox, run_dir, mask=None, mask_binarized=False):
+def assess_quality(canvas, result, gap_start, gap_width, feather, crop_bbox, run_dir, mask=None, mask_binarized=False, model_cache=None):
     start = time.perf_counter()
     scores = diagnostics(canvas, result, gap_start, gap_width, feather, crop_bbox, mask, mask_binarized)
     try:
-        scores.update(maniqa_score(result, gap_start, gap_width, run_dir))
+        scores.update(maniqa_score(result, gap_start, gap_width, run_dir, model_cache=model_cache))
     except Exception as error:
         scores["quality_maniqa_error"] = str(error)
+        if model_cache is not None:
+            model_cache["maniqa_error"] = str(error)
         print(f"Warning: MANIQA assessment failed: {error}. Diagnostics and output are preserved.")
     scores["quality_assessment_time"] = time.perf_counter() - start
     return scores

@@ -333,6 +333,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if not self.valid_host():
             return
         address = urlsplit(self.path)
+        if address.path == "/batches" or address.path == "/batch.js" or address.path.startswith("/api/batches"):
+            from batch_ui import get_route
+            if get_route(self, address):
+                return
         if address.path == "/review.js":
             self.respond(Path(__file__).with_name("review.js").read_bytes(), "text/javascript; charset=utf-8")
             return
@@ -400,12 +404,16 @@ class ReviewHandler(BaseHTTPRequestHandler):
 <style>.quality-panel{{font-size:14px;border:1px solid #ccc;border-radius:8px;padding:12px;margin:16px 0}}.quality-panel h2{{font-size:18px;margin:0 0 8px}}.quality-group{{border-top:1px solid #ddd;padding:8px 0}}.quality-group h3{{font-size:15px;margin:4px 0 8px}}.quality-group p{{margin:6px 0;line-height:1.4}}.gap-quality{{border-left:4px solid #1468ac;padding-left:10px}}.metric-table{{overflow-x:auto}}.quality-panel th,.quality-panel td{{padding:4px 6px}}.quality-panel .metric-highlight{{margin:0;font:inherit}}small{{font-weight:normal;overflow-wrap:anywhere}}</style>
 <style>.comparison-frame{{position:relative}}.comparison-frame img{{display:block}}#metric-overlay{{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}}.metric-highlight[aria-pressed="true"]{{outline:3px solid #1468ac}}.metric-highlight{{margin-top:8px}}</style>
 <style>.metric-workspace{{display:grid;grid-template-columns:minmax(0,1fr) 112px;grid-template-rows:auto auto auto;gap:4px 8px;max-width:calc(55vh * var(--image-aspect,1.6) + 120px)}}.top-ranges{{grid-area:1/1}}.tile-heading{{grid-area:1/2;align-self:end;font-size:13px}}.comparison-frame{{grid-area:2/1}}.tile-rail{{grid-area:2/2;position:relative;font-size:12px}}.bottom-ranges{{grid-area:3/1}}.range-row{{font-size:12px;margin:3px 0}}.range-row button{{font:inherit;margin:0 2px;padding:1px 4px}}.range-track{{height:12px;position:relative;background:#f4f4f4}}.range-track span{{position:absolute;top:2px;height:7px;border:1px solid #1468ac;border-left-width:3px;border-right-width:3px;box-sizing:border-box;background:#1473e61a}}.tile-connectors{{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}}.tile-connectors line{{stroke:#888;stroke-width:1;vector-effect:non-scaling-stroke}}.tile-value{{position:absolute;left:24%;transform:translateY(-50%);font:inherit;margin:0;padding:2px 4px;white-space:nowrap}}.range-help{{font-size:12px}}@media(max-width:600px){{.metric-workspace{{grid-template-columns:minmax(0,1fr) 80px}}.tile-value{{font-size:10px;padding:1px 2px}}}}</style>
-</head><body><p role="status">{escape(message)}</p>{content}<script src="/review.js" defer></script></body></html>'''
+</head><body><nav><a href="/">Human review</a> · <a href="/batches">Batch builder &amp; history</a></nav><p role="status">{escape(message)}</p>{content}<script src="/review.js" defer></script></body></html>'''
         self.respond(page.encode())
 
     def do_POST(self):
         if not self.valid_host():
             return
+        if self.path.startswith("/api/batches"):
+            from batch_ui import post_route
+            if post_route(self):
+                return
         if self.path != "/review":
             self.send_error(404)
             return
@@ -448,11 +456,20 @@ class ReviewHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+class ReviewServer(HTTPServer):
+    def server_close(self):
+        batch_manager = getattr(self, "batch_manager", None)
+        if batch_manager is not None:
+            batch_manager.close()
+        super().server_close()
+
+
 def review_server(runs_dir, port=0):
     # shortcut: single-user loopback server; use a production server and authentication before network sharing.
-    server = HTTPServer(("127.0.0.1", port), ReviewHandler)
+    server = ReviewServer(("127.0.0.1", port), ReviewHandler)
     server.runs_dir = runs_dir
     server.token = secrets.token_urlsafe(32)
+    server.project_root = Path(__file__).resolve().parent
     return server
 
 
