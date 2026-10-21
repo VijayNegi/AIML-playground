@@ -19,6 +19,7 @@ inpainting/
     compare.py          score-versus-review correlation report
     batches.py          batch planning, estimates, worker
     server.py           local HTTP server: pages, /static/, API dispatch
+    runs_api.py         run history JSON API: list, detail, debug images, rerun
     review_api.py       review JSON API and highlight geometry
     batch_api.py        batch JSON API
     static/             browser UI: HTML, JS modules, CSS (no build step)
@@ -32,9 +33,10 @@ inpainting/
 Data paths resolve from the project root, not the shell's working directory.
 Back up `runs/`, `.aim/`, and `batches.json` together; they are not in Git.
 
-The web UI is separate from Python code: `static/review.html` and
-`static/batch.html` are plain pages; `review.js`, `batch.js`, and the shared
-`common.js` are ES modules that call the JSON APIs; `app.css` holds all styles.
+The web UI is separate from Python code: `static/runs.html`, `run.html`,
+`review.html`, and `batch.html` are plain pages sharing one header; their
+`.js` files and the shared `common.js` are ES modules that call the JSON APIs;
+`app.css` holds all styles.
 Edit them directly and refresh the browser — no Node or bundler is needed. The
 server only fills in the CSRF token and serves `.js`/`.css` from that folder.
 
@@ -45,7 +47,7 @@ Run everything from `inpainting/` after activating the virtual environment:
 | Task | Command |
 | --- | --- |
 | Generate a collage | `python -m inpaint_lab run --images LEFT RIGHT [options]` |
-| Review and batch web app | `python -m inpaint_lab serve` |
+| Web app (runs, new run, review, batches) | `python -m inpaint_lab serve` |
 | Score/review correlations | `python -m inpaint_lab compare` |
 | Split an image for testing | `python -m scripts.image_splitter --input IMAGE` |
 | Compare inpainting models | `python -m scripts.compare_models --input IMAGE --mask MASK` |
@@ -104,6 +106,42 @@ the denoising step directory; choose a fresh directory to avoid overwriting step
 Other scripts retain their existing output paths. JSON records settings, not
 copies of inputs or a locked software environment; preserve samples separately.
 
+## Web app
+
+```bash
+source ../.venv/bin/activate
+python -m inpaint_lab serve
+```
+
+Opens **http://127.0.0.1:8765/** (local only). The header has four sections:
+
+- **Runs** (`/`): every run with settings in `runs/`, newest first, filterable
+  by status (pending review, reviewed, running, failed, incomplete). Selecting a
+  run shows key numbers, all saved images (output, before/after, crop sent to the
+  model, crop mask, model output crop, and canvas/mask when saved), every setting,
+  every metric (tile lists under expandable sections), any human review, and the
+  batch it came from. Running entries refresh automatically.
+- **New run** (`/run`): pick inputs from `samples/`, edit the prompt and settings
+  (gap, feather, steps, guidance, seed with a **Random** button; model, negative
+  prompt, height, and **Save canvas & mask** under Advanced), then **Run**. Status
+  shows progress, the time estimate, errors, and links to the finished run.
+- **Review** (`/review`): rate unreviewed runs (details below).
+- **Batches** (`/batches`): parameter sweeps, pause/resume, and history.
+
+**Rerun with these settings** on a run opens New run pre-filled with that run's
+settings so you can change anything before running. Inputs are matched to files in
+`samples/` and checked against the run's recorded pixel fingerprint; the form warns
+if an image is missing, changed, or (for old runs without a fingerprint) matched
+only by filename. A rerun always creates a new run; nothing is overwritten.
+
+New runs from the UI go through the same single worker as batches, so only one
+job uses the GPU at a time. If a batch is already running, the run is saved but not
+started; start it from Batches when the worker is free. Closing the tab does not
+stop a run. UI runs use batch validation: inputs must be in `samples/`, the actual
+gap at most 224 px, and height 224–1024 px; use the CLI for anything else. They
+appear in Batch history as "Single run" entries. Folders in `runs/` without
+`params.json` (old manual outputs) are not listed.
+
 ## Aim tracking
 
 Every completed collage run is tracked in Aim. Activate the virtual environment
@@ -157,7 +195,8 @@ source ../.venv/bin/activate
 python -m inpaint_lab serve
 ```
 
-The script opens `http://127.0.0.1:8765/` in your browser. The page shows each
+The app opens at `http://127.0.0.1:8765/`; choose **Review** in the header
+(`/review`). The page shows each
 output by default, all settings, three 1–5 rating groups, and optional notes.
 Use **Show input / Show output** to flip between the assembled input canvas and
 the inpainted result. The input is read from the existing comparison image.
@@ -324,8 +363,8 @@ source ../.venv/bin/activate
 python -m inpaint_lab serve
 ```
 
-Open **http://127.0.0.1:8765/batches**, or choose **Batch builder & history** in
-the navigation. Select two images from `samples/` and inspect their previews.
+Open **http://127.0.0.1:8765/batches**, or choose **Batches** in the header.
+Select two images from `samples/` and inspect their previews.
 The generic CLI prompt is filled in automatically. Choose a fixed baseline and
 set individual parameters to **Fixed** or **Sweep**, entering comma-separated
 sweep values. Supported sweeps are gap, feather, steps, guidance, and seed.

@@ -8,14 +8,14 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="review-page">
-  <nav><a href="/">Human review</a> · <a href="/batches">Batch builder &amp; history</a></nav>
+  <header class="app-header"><a class="brand" href="/">Inpaint Lab</a><nav aria-label="Main"><a href="/">Runs</a><a href="/run">New run</a><a href="/review">Review</a><a href="/batches">Batches</a></nav></header>
   <p id="message" role="status" aria-live="polite"></p>
   <h1 id="all-done" hidden>All available runs reviewed</h1>
   <main id="review" hidden>
     <h1>Visual review</h1>
     <p id="pending-count"></p>
     <form id="run-picker"><label>Choose run <select name="run"></select></label><button>Open</button></form>
-    <h2 id="run-name"></h2>
+    <h2><span id="run-name"></span> <a id="details-link" class="small-link" href="/">Run details</a></h2>
     <details><summary>All settings</summary><pre id="settings"></pre></details>
     <p>Showing: <strong id="image-view-label">Output</strong>. Input is the assembled canvas before inpainting. Click image for full resolution.</p>
     <button type="button" id="flip-image">Show input</button>
@@ -36,7 +36,7 @@
     <form id="review-form">
       <div id="rating-fields"></div>
       <p><label>Notes<br><textarea name="notes" rows="3" maxlength="10000"></textarea></label></p>
-      <button>Save review and sync to Aim</button> <a id="skip-link" href="/">Skip / next</a>
+      <button>Save review and sync to Aim</button> <a id="skip-link" href="/review">Skip / next</a>
     </form>
   </main>
   <script type="module" src="/static/review.js"></script>

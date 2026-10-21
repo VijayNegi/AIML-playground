@@ -81,3 +81,71 @@ progress {width:100%;height:20px}
   .batch-page th,.batch-page td {padding:4px}
   .batch-page input {width:100%}
 }
+
+/* App shell */
+.app-header {display:flex;align-items:center;gap:24px;flex-wrap:wrap;padding:4px 0 12px;margin-bottom:16px;border-bottom:1px solid #dde2e8}
+.brand {font-weight:700;font-size:18px;color:inherit;text-decoration:none}
+.app-header nav {display:flex;gap:4px;flex-wrap:wrap}
+.app-header nav a {padding:6px 12px;border-radius:6px;color:#1f3b57;text-decoration:none}
+.app-header nav a:hover {background:#eef3f8}
+.app-header nav a[aria-current="page"] {background:#1468ac;color:#fff}
+a.button {display:inline-block;padding:6px 12px;border:1px solid #9aa7b4;border-radius:6px;color:#20242a;text-decoration:none;background:#fff}
+a.button.primary,button.primary {background:#1468ac;border:1px solid #1468ac;color:#fff;border-radius:6px}
+button.primary:disabled {background:#8aa9c6;border-color:#8aa9c6}
+.muted {color:#5d6773}
+.small-link {font-size:14px;font-weight:normal}
+.card {border:1px solid #dde2e8;border-radius:10px;padding:16px;background:#fff}
+.note {background:#eef5fb;border:1px solid #c8dcef;border-radius:8px;padding:4px 12px;margin-bottom:12px}
+.warning {color:#8a5300}
+.error-box {background:#fdecee;color:#9d1728;padding:8px 12px;border-radius:6px}
+.badge {display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;background:#e6e9ed;color:#38424d;vertical-align:middle}
+.badge-reviewed,.badge-completed {background:#dff3e4;color:#1e6b34}
+.badge-pending-review {background:#e1edf9;color:#1f4f80}
+.badge-running,.badge-queued {background:#fff1d6;color:#7a4b00}
+.badge-failed,.badge-interrupted {background:#fde2e4;color:#9d1728}
+
+/* Runs page */
+.runs-page {max-width:1400px}
+.split {display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;align-items:start}
+.run-list-panel {position:sticky;top:12px;max-height:calc(100vh - 110px);display:flex;flex-direction:column}
+.panel-head {display:flex;justify-content:space-between;align-items:center;gap:8px}
+.panel-head h1 {margin:0;font-size:22px}
+.filter {display:block;margin:10px 0 4px}
+.run-list {list-style:none;margin:0;padding:0 4px 0 0;overflow-y:auto}
+.run-item {display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:8px 10px;margin:0 0 6px;border:1px solid #dde2e8;
+  border-radius:8px;background:#fff;cursor:pointer;font-size:13px}
+.run-item:hover {background:#f5f8fb}
+.run-item[aria-current="true"] {border-color:#1468ac;box-shadow:inset 3px 0 0 #1468ac}
+.run-item-head {display:flex;justify-content:space-between;gap:8px;align-items:center}
+.detail-head {display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.detail-head h2 {margin:0 0 4px}
+.detail-head .actions {margin:0}
+.stats {display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.stat {border:1px solid #dde2e8;border-radius:8px;padding:10px;display:flex;flex-direction:column}
+.stat-value {font-size:22px;font-weight:700}
+.stat-label {font-size:13px}
+.gallery {display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.gallery figure {margin:0;border:1px solid #dde2e8;border-radius:8px;padding:8px;background:#fafbfc}
+.gallery img {display:block;width:100%;height:180px;object-fit:contain;background:#eceff2}
+.gallery figcaption {font-size:13px;margin-top:6px;overflow-wrap:anywhere}
+.two-col {display:grid;grid-template-columns:1fr 1fr;gap:20px}
+table.kv th {width:40%;font-weight:600;font-size:13px}
+table.kv th,table.kv td {padding:4px 6px;border-bottom:1px solid #eee;vertical-align:top}
+table.kv code {white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+@media (max-width:900px) {
+  .split,.two-col {grid-template-columns:1fr}
+  .run-list-panel {position:static;max-height:none}
+}
+
+/* New run page */
+.run-page {max-width:1200px}
+.run-layout {display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:20px;align-items:start}
+.run-page h2 {font-size:17px;margin:16px 0 4px}
+.run-page label {display:block;margin:8px 0}
+.run-page input[type=number],.run-page select,.run-page textarea {box-sizing:border-box;padding:5px;max-width:100%}
+.run-page button {padding:6px 12px;cursor:pointer}
+.settings-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 16px}
+.settings-grid input {width:100%}
+.inline {display:flex;gap:6px}
+.check input {margin-right:6px}
+@media (max-width:800px) {.run-layout {grid-template-columns:1fr}}

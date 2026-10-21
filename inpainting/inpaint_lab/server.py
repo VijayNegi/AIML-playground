@@ -8,14 +8,14 @@ import secrets
 from urllib.parse import urlsplit
 import webbrowser
 
-from inpaint_lab import batch_api, review_api
+from inpaint_lab import batch_api, review_api, runs_api
 from inpaint_lab.config import ROOT, RUNS_DIR, STATIC_DIR
 from inpaint_lab.tracking import sync_saved_reviews
 
 
-PAGES = {"/": "review.html", "/batches": "batch.html"}
+PAGES = {"/": "runs.html", "/run": "run.html", "/review": "review.html", "/batches": "batch.html"}
 STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
-ROUTES = (review_api, batch_api)
+ROUTES = (runs_api, review_api, batch_api)
 MAX_JSON_BYTES = 131072
 
 
@@ -105,7 +105,7 @@ def main():
     sync_saved_reviews(args.runs_dir)
     with review_server(args.runs_dir, args.port) as server:
         url = f"http://127.0.0.1:{server.server_port}/"
-        print(f"Review in your browser: {url}\nBatches: {url}batches\nPress Ctrl+C to stop.")
+        print(f"Inpaint Lab: {url}\nPress Ctrl+C to stop.")
         webbrowser.open(url)
         try:
             server.serve_forever()

@@ -4,17 +4,10 @@ from contextlib import redirect_stdout
 from datetime import datetime
 import io
 import json
-import os
 from pathlib import Path
-import shutil
-import signal
-import subprocess
 import tempfile
-import threading
-import time
 import types
 import unittest
-from http.client import HTTPConnection
 from unittest.mock import MagicMock, patch
 
 from PIL import Image
@@ -24,56 +17,7 @@ from inpaint_lab.runs import pending_runs
 from inpaint_lab.server import review_server
 from inpaint_lab.tracking import sync_review, sync_saved_reviews
 
-
-CHROME_PATHS = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium", "chrome")
-CHROME_FLAGS = ("--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-                "--disable-background-networking", "--disable-component-update", "--disable-sync",
-                "--virtual-time-budget=5000", "--dump-dom")
-SAMPLE_METRICS = {
-    "canvas_size": [500, 448], "quality_band_width": 8,
-    "quality_gap_bbox": [200, 0, 280, 448], "quality_effective_mask_bbox": [190, 0, 290, 448],
-    "quality_editable_bbox": [180, 0, 300, 448], "crop_bbox": [100, 0, 400, 448],
-    "quality_gap_left_delta_e76": 2.5, "quality_gap_right_gradient_excess": 0.03,
-    "quality_patch_left_gradient_excess": 0.1, "quality_preservation_changed_fraction": 0.125,
-    "quality_maniqa": 0.6, "quality_maniqa_min": 0.4, "quality_maniqa_min_bbox": [128, 0, 352, 224],
-    "quality_maniqa_tiles": [{"bbox": [128, 0, 352, 224], "score": 0.4},
-                             {"bbox": [128, 224, 352, 448], "score": 0.8}],
-}
-
-
-def make_run(root, name, metrics=None):
-    run_dir = root / name
-    run_dir.mkdir()
-    (run_dir / "params.json").write_text(json.dumps({"output": f"runs/{name}/output.png", "seed": 42}))
-    Image.new("RGB", (8, 8)).save(run_dir / "output.png")
-    Image.new("RGB", (8, 16)).save(run_dir / "output_comparison.png")
-    if metrics is not None:
-        (run_dir / "metrics.json").write_text(json.dumps(metrics))
-    return run_dir
-
-
-class Client:
-    """Minimal HTTP client against a background review server."""
-    def __init__(self, server):
-        self.server = server
-        self.thread = threading.Thread(target=server.serve_forever)
-        self.thread.start()
-
-    def request(self, method, path, data=None, token=None, raw=None):
-        connection = HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
-        try:
-            headers = {"Content-Type": "application/json", "X-CSRF-Token": token or "bad"}
-            body = raw if raw is not None else (json.dumps(data) if data is not None else None)
-            connection.request(method, path, body=body, headers=headers)
-            response = connection.getresponse()
-            return response.status, response.read()
-        finally:
-            connection.close()
-
-    def close(self):
-        self.server.shutdown()
-        self.thread.join()
-        self.server.server_close()
+from helpers import SAMPLE_METRICS, Client, chrome, make_run, render
 
 
 class ReviewTests(unittest.TestCase):
@@ -177,14 +121,16 @@ class ReviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             client = Client(review_server(Path(directory)))
             try:
-                status, page = client.request("GET", "/")
-                self.assertEqual(status, 200)
-                self.assertIn(client.server.token.encode(), page)
-                self.assertIn(b'src="/static/review.js"', page)
-                for name in ("review.js", "batch.js", "common.js", "app.css"):
+                for page, script in (("/", "runs.js"), ("/run", "run.js"), ("/review", "review.js"), ("/batches", "batch.js")):
+                    status, body = client.request("GET", page)
+                    self.assertEqual(status, 200, page)
+                    self.assertIn(client.server.token.encode(), body)
+                    self.assertIn(f'src="/static/{script}"'.encode(), body)
+                    self.assertIn(b'class="app-header"', body)
+                for name in ("review.js", "batch.js", "runs.js", "run.js", "common.js", "app.css"):
                     self.assertEqual(client.request("GET", f"/static/{name}")[0], 200, name)
                 for path in ("/static/review.html", "/static/../server.py", "/static/..%2Fserver.py",
-                             "/static/missing.js", "/review", "/review.js", "/batch.js"):
+                             "/static/missing.js", "/review.js", "/batch.js", "/nowhere"):
                     self.assertEqual(client.request("GET", path)[0], 404, path)
             finally:
                 client.close()
@@ -246,49 +192,15 @@ class ReviewTests(unittest.TestCase):
             retry.assert_called_once_with(run_dir, saved)
 
 
-def chrome():
-    for candidate in CHROME_PATHS:
-        if os.path.isfile(candidate) or shutil.which(candidate):
-            return candidate
-    return None
-
-
 @unittest.skipUnless(chrome(), "Chrome/Chromium not installed")
 class RenderedPageTests(unittest.TestCase):
     """Executes the real JavaScript in headless Chrome and inspects the rendered DOM."""
-    def render(self, root, path="/"):
-        client = Client(review_server(root))
-        try:
-            with tempfile.TemporaryDirectory() as profile:
-                output = Path(profile) / "dom.html"
-                with output.open("w") as stdout:
-                    process = subprocess.Popen(
-                        [chrome(), *CHROME_FLAGS[:-1], f"--user-data-dir={profile}/data", CHROME_FLAGS[-1],
-                         f"http://127.0.0.1:{client.server.server_port}{path}"],
-                        stdout=stdout, stderr=subprocess.DEVNULL, start_new_session=True)
-                # Chrome on macOS can print the DOM and then linger, so stop once the document is complete.
-                deadline = time.monotonic() + 60
-                try:
-                    while "</html>" not in output.read_text() and process.poll() is None and time.monotonic() < deadline:
-                        time.sleep(0.2)
-                finally:
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                    process.wait()
-                dom = output.read_text()
-            self.assertIn("</html>", dom, "Chrome did not render the page in time")
-            return dom
-        finally:
-            client.close()
-
     def test_review_page_renders_scores_rulers_tiles_and_form(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metrics = dict(SAMPLE_METRICS, quality_maniqa_error="<script>bad</script>")
             make_run(root, "example", metrics)
-            dom = self.render(root)
+            dom = render(root, "/review")
         for text in ("1. Gap quality", "2. Seams", "3. Patch", "Visual quality · MANIQA: 0.600",
                      "Tile 1: 0.400", "Tile 2: 0.800", "Lowest tile: 0.400", "L color 2.5", "R extra edge 0.03",
                      "Original pixels changed: 12.50%", "Left edge of pasted crop", "Model mask", "Outer feather",
@@ -303,13 +215,14 @@ class RenderedPageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             make_run(root, "legacy")
-            dom = self.render(root, "/?run=missing")
+            dom = render(root, "/review?run=missing")
             self.assertIn("Run is missing or already reviewed", dom)
             self.assertIn("Visual quality · MANIQA: Not available", dom)
             self.assertIn("missing or invalid", dom)
             self.assertIn("No recorded spatial metrics.", dom)
+            self.assertIn('href="/?run=legacy"', dom)
             (root / "legacy" / "review.json").write_text("{}")
-            dom = self.render(root)
+            dom = render(root, "/review")
             self.assertRegex(dom, r'<h1 id="all-done">All available runs reviewed</h1>')
 
     def test_batch_page_renders_with_shared_modules(self):
@@ -317,11 +230,11 @@ class RenderedPageTests(unittest.TestCase):
             root = Path(directory)
             (root / "samples").mkdir()
             Image.new("RGB", (256, 256)).save(root / "samples" / "left.png")
-            with patch("inpaint_lab.server.ROOT", root):
-                dom = self.render(root / "samples", "/batches")
+            dom = render(root / "samples", "/batches", project_root=root)
         self.assertIn("Batch history", dom)
         self.assertIn("samples/left.png", dom)
         self.assertIn('aria-label="Gap (px) baseline"', dom)
+        self.assertIn('href="/batches" aria-current="page"', dom)
 
 
 if __name__ == "__main__":

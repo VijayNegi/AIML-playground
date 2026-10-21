@@ -64,10 +64,15 @@ def preview_batch(root, definition):
     from inpaint_lab.runs import image_pair_id
     from inpaint_lab.quality import maniqa_tiles
 
-    if not isinstance(definition, dict) or set(definition) - {"name", "images", "baseline", "sweeps", "mode", "allow_legacy_timings"}:
+    if not isinstance(definition, dict) or set(definition) - {"name", "images", "baseline", "sweeps", "mode", "allow_legacy_timings", "kind"}:
         raise ValueError("Invalid batch definition or unsupported fields")
     if type(definition.get("allow_legacy_timings", False)) is not bool:
         raise ValueError("Legacy timing opt-in must be true or false")
+    kind = definition.get("kind", "batch")
+    if kind not in ("batch", "single"):
+        raise ValueError("Kind must be batch or single")
+    if kind == "single" and definition.get("sweeps"):
+        raise ValueError("A single run cannot have sweeps")
     name = definition.get("name", "Batch")
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 100:
         raise ValueError("Batch name must be 1–100 characters")
@@ -82,8 +87,10 @@ def preview_batch(root, definition):
         with Image.open(path) as image:
             images.append(image.convert("RGB"))
     baseline = definition.get("baseline", {})
-    if not isinstance(baseline, dict) or set(baseline) - (set(PARAMETERS) | {"model", "prompt", "negative_prompt", "height"}):
+    if not isinstance(baseline, dict) or set(baseline) - (set(PARAMETERS) | {"model", "prompt", "negative_prompt", "height", "save_intermediate"}):
         raise ValueError("Unsupported baseline parameters")
+    if type(baseline.get("save_intermediate", False)) is not bool:
+        raise ValueError("save_intermediate must be true or false")
     defaults = vars(parse_collage_args(["--images", *map(str, paths)]))
     defaults.update(baseline)
     for key in PARAMETERS:
@@ -139,7 +146,7 @@ def preview_batch(root, definition):
                      "geometry": {"crop_size": f"{min(1024, canvas_width)}x{min(1024, canvas_height)}",
                                   "adjusted_gap": adjusted_gap, "tiles": len(tiles)},
                      "status": "pending", "attempts": []})
-    return {"name": name.strip(), "definition": deepcopy(definition), "input_hashes": hashes,
+    return {"name": name.strip(), "kind": kind, "definition": deepcopy(definition), "input_hashes": hashes,
             "jobs": jobs, "status": "paused", "created_at": now(), "elapsed_seconds": 0.0,
             "software_signature": software_signature()}
 

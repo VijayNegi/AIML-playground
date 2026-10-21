@@ -1,4 +1,4 @@
-import {api, message} from '/static/common.js';
+import {api, message, duration, estimateText} from '/static/common.js';
 
 const form = document.getElementById('builder');
 const specifications = [
@@ -6,20 +6,10 @@ const specifications = [
   ['steps', 'Steps', 2, 1000, 1], ['guidance_scale', 'Guidance', 0, 50, 0.1], ['seed', 'Seed', 0, 4294967295, 1]
 ];
 let preview = null;
-let selectedId = '';
+let selectedId = new URLSearchParams(location.search).get('batch') || '';
 let history = [];
 let polling = false;
 
-function duration(seconds) {
-  if (seconds === null || seconds === undefined) return 'unknown';
-  const value = Math.ceil(seconds);
-  return `${Math.floor(value / 3600)}h ${Math.floor(value % 3600 / 60)}m ${value % 60}s`;
-}
-function estimateText(estimate) {
-  if (!estimate) return 'Estimate unavailable.';
-  const finish = estimate.seconds === null ? '' : `\nApproximate local finish: ${new Date(Date.now() + estimate.seconds * 1000).toLocaleString()}`;
-  return `Estimated duration: ${duration(estimate.seconds)}${finish}\nKnown components: ${duration(estimate.known_seconds)}; scaled observed range: ${duration(estimate.observed_low_seconds)}–${duration(estimate.observed_high_seconds)}\n${estimate.confidence}; minimum matched samples per component: ${estimate.minimum_samples}\n${estimate.warnings.join('\n')}`;
-}
 function invalidate() {
   preview = null;
   document.getElementById('save').disabled = true;
@@ -117,7 +107,7 @@ function showJobs(batch) {
         details.append(link);
         const review = document.createElement('a');
         review.href = '/?run=' + encodeURIComponent(attempt.run_dir.split(/[\\/]/).pop());
-        review.textContent = ' · Review (if pending)'; details.append(review);
+        review.textContent = ' · Run details'; details.append(review);
       }
       if (attempt.warnings) {
         const warning = document.createElement('small');

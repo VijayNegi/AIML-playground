@@ -230,16 +230,17 @@ function renderRatingFields() {
 async function loadRun(name) {
   const payload = await api(`/api/review/run?run=${encodeURIComponent(name)}`);
   Object.assign(state, {run: payload, regions: payload.regions || {}, selected: null, preview: null});
-  history.replaceState(null, '', `/?run=${encodeURIComponent(payload.name)}`);
+  history.replaceState(null, '', `/review?run=${encodeURIComponent(payload.name)}`);
   $('run-picker').elements.run.value = payload.name;
   $('run-name').textContent = payload.name;
+  $('details-link').href = `/?run=${encodeURIComponent(payload.name)}`;
   $('settings').textContent = JSON.stringify(payload.params, null, 2);
   renderSurroundings(payload.metrics);
   renderScores(payload);
   bindHighlights();
   $('review-form').reset();
   const index = state.runs.indexOf(payload.name);
-  $('skip-link').href = `/?run=${encodeURIComponent(state.runs[(index + 1) % state.runs.length])}`;
+  $('skip-link').href = `/review?run=${encodeURIComponent(state.runs[(index + 1) % state.runs.length])}`;
   setView(false);
 }
 

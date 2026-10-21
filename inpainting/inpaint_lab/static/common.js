@@ -30,3 +30,24 @@ export function element(tag, attributes = {}, ...children) {
   node.append(...children.filter(child => child !== null && child !== undefined && child !== ''));
   return node;
 }
+
+export function duration(seconds) {
+  if (seconds === null || seconds === undefined) return 'unknown';
+  const value = Math.ceil(seconds);
+  return `${Math.floor(value / 3600)}h ${Math.floor(value % 3600 / 60)}m ${value % 60}s`;
+}
+
+export function estimateText(estimate) {
+  if (!estimate) return 'Estimate unavailable.';
+  const finish = estimate.seconds === null ? '' : `\nApproximate local finish: ${new Date(Date.now() + estimate.seconds * 1000).toLocaleString()}`;
+  return `Estimated duration: ${duration(estimate.seconds)}${finish}\nKnown components: ${duration(estimate.known_seconds)}; scaled observed range: ${duration(estimate.observed_low_seconds)}–${duration(estimate.observed_high_seconds)}\n${estimate.confidence}; minimum matched samples per component: ${estimate.minimum_samples}\n${estimate.warnings.join('\n')}`;
+}
+
+export function badge(status) {
+  return element('span', {class: `badge badge-${status.replaceAll(' ', '-')}`, text: status});
+}
+
+// Mark the current section in the shared header.
+for (const link of document.querySelectorAll('.app-header nav a')) {
+  if (new URL(link.href).pathname === location.pathname) link.setAttribute('aria-current', 'page');
+}

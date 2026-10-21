@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="__TOKEN__">
+  <title>Runs · Inpaint Lab</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="runs-page">
+  <header class="app-header"><a class="brand" href="/">Inpaint Lab</a><nav aria-label="Main"><a href="/">Runs</a><a href="/run">New run</a><a href="/review">Review</a><a href="/batches">Batches</a></nav></header>
+  <p id="message" role="status" aria-live="polite"></p>
+  <div class="split">
+    <aside class="run-list-panel" aria-label="Run history">
+      <div class="panel-head">
+        <h1>Runs</h1>
+        <a class="button primary" href="/run">New run</a>
+      </div>
+      <label class="filter">Show
+        <select id="filter">
+          <option value="">All runs</option>
+          <option value="pending review">Pending review</option>
+          <option value="reviewed">Reviewed</option>
+          <option value="running">Running</option>
+          <option value="failed">Failed</option>
+          <option value="incomplete">Incomplete</option>
+        </select>
+      </label>
+      <p id="run-count" class="muted"></p>
+      <ul id="run-list" class="run-list"></ul>
+    </aside>
+    <main id="run-detail" class="detail-panel">
+      <p class="muted">Select a run to see its images, settings and metrics.</p>
+    </main>
+  </div>
+  <script type="module" src="/static/runs.js"></script>
+</body>
+</html>

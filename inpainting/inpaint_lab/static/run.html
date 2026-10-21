@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="__TOKEN__">
+  <title>New run · Inpaint Lab</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="run-page">
+  <header class="app-header"><a class="brand" href="/">Inpaint Lab</a><nav aria-label="Main"><a href="/">Runs</a><a href="/run">New run</a><a href="/review">Review</a><a href="/batches">Batches</a></nav></header>
+  <p id="message" role="status" aria-live="polite"></p>
+  <h1>New run</h1>
+  <div id="from-note" class="note" hidden></div>
+  <div class="run-layout">
+    <form id="run-form" class="card">
+      <h2>Inputs</h2>
+      <div class="inputs">
+        <label>Left image <select name="left" required></select><img id="left-preview" alt="Selected left input" hidden></label>
+        <label>Right image <select name="right" required></select><img id="right-preview" alt="Selected right input" hidden></label>
+      </div>
+      <h2>Prompt</h2>
+      <label>Prompt <textarea name="prompt" rows="2" maxlength="10000"></textarea></label>
+      <h2>Settings</h2>
+      <div class="settings-grid">
+        <label>Gap (px) <input type="number" name="gap" min="1" max="224" step="1" required></label>
+        <label>Feather (px) <input type="number" name="feather" min="0" max="1024" step="1" required></label>
+        <label>Steps <input type="number" name="steps" min="2" max="1000" step="1" required></label>
+        <label>Guidance scale <input type="number" name="guidance_scale" min="0" max="50" step="0.1" required></label>
+        <label>Seed <span class="inline"><input type="number" name="seed" min="0" max="4294967295" step="1" required><button type="button" id="random-seed">Random</button></span></label>
+      </div>
+      <details>
+        <summary>Advanced</summary>
+        <label>Model <select name="model"></select></label>
+        <label>Negative prompt <textarea name="negative_prompt" rows="2" maxlength="10000"></textarea></label>
+        <label>Height <input type="number" name="height" min="224" max="1024" placeholder="Automatic (224–1024)"></label>
+        <label class="check"><input type="checkbox" name="save_intermediate"> Save canvas &amp; mask debug images</label>
+      </details>
+      <div class="actions">
+        <button type="submit" class="primary" id="run-button">Run</button>
+        <button type="button" id="reset">Reset to defaults</button>
+      </div>
+      <small class="muted">Runs use the same queue as batches: one job at a time. You can leave this page; the run continues while the server is running.</small>
+    </form>
+    <aside class="card" aria-labelledby="status-heading">
+      <h2 id="status-heading">Status</h2>
+      <div id="status"><p class="muted">No run started from this page yet.</p></div>
+    </aside>
+  </div>
+  <script type="module" src="/static/run.js"></script>
+</body>
+</html>
