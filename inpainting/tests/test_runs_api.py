@@ -1,12 +1,15 @@
 """Run history API, single runs through the batch worker, rerun settings, and page rendering."""
 
+from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
+import io
 import json
 import os
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.parse import quote
 
 from PIL import Image
 
@@ -36,6 +39,7 @@ def server(root):
 def fake_run(args, resources=None):
     folder = Path(args.output).parent
     folder.mkdir(parents=True)
+    print("pipeline chatter")
     for name in ("output.png", "output_comparison.png", "debug_crop_mask.png"):
         Image.new("RGB", (8, 8)).save(folder / name)
     (folder / "params.json").write_text(json.dumps(vars(args)))
@@ -71,6 +75,8 @@ class RunsApiTests(unittest.TestCase):
         self.assertEqual([run["name"] for run in listed], ["reviewed", "pending", "incomplete", "failed"])
         self.assertEqual([run["status"] for run in listed], ["reviewed", "pending review", "incomplete", "failed"])
         self.assertEqual(listed[0]["maniqa"], 0.7)
+        self.assertEqual(listed[0]["output"], "output.png")
+        self.assertIsNone(listed[2]["output"])
         self.assertEqual(listed[3]["batch"]["error"], "CUDA out of memory")
         self.assertEqual(listed[3]["batch"]["batch_name"], "Sweep")
 
@@ -97,6 +103,9 @@ class RunsApiTests(unittest.TestCase):
                 status, body = client.request("GET", "/api/runs/file?run=example&name=debug_crop_result.png")
                 self.assertEqual(status, 200)
                 self.assertTrue(body.startswith(b"\x89PNG"))
+                status, body = client.request("GET", "/api/runs/file?run=example&name=output_comparison.png&thumb=1")
+                self.assertEqual(status, 200)
+                self.assertTrue(body.startswith(b"\xff\xd8"))  # JPEG thumbnail
                 for path in ("/api/runs/file?run=example&name=notes.txt", "/api/runs/file?run=example&name=../secret.png",
                              "/api/runs/file?run=..&name=secret.png", "/api/runs/file?run=example%2F..&name=secret.png",
                              "/api/runs/file?run=example&name=intermediate_steps/step_0000.png",
@@ -160,15 +169,29 @@ class RunsApiTests(unittest.TestCase):
                 batch = json.loads(body)
                 self.assertEqual(batch["kind"], "single")
                 client.server.batch_manager.runner = fake_run
-                self.assertEqual(client.request("POST", "/api/batches/action", {"id": batch["id"], "action": "resume"}, token)[0], 200)
-                client.server.batch_manager.thread.join(5)
-                listed = json.loads(client.request("GET", "/api/runs")[1])["runs"]
+                console, stdout = io.StringIO(), io.StringIO()
+                with redirect_stderr(console), redirect_stdout(stdout):
+                    self.assertEqual(client.request("POST", "/api/batches/action", {"id": batch["id"], "action": "resume"}, token)[0], 200)
+                    client.server.batch_manager.thread.join(5)
+                    listed = json.loads(client.request("GET", "/api/runs")[1])["runs"]
+                    detail = json.loads(client.request("GET", f"/api/runs/detail?run={quote(listed[0]['name'])}")[1])
+                    client.request("POST", "/api/batches/preview", {"images": []}, token)
+                    client.request("GET", "/api/runs/detail?run=missing")
             finally:
                 client.close()
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["status"], "pending review")
         self.assertEqual(listed[0]["batch"]["batch_kind"], "single")
         self.assertEqual(listed[0]["params"]["gap"], 16)
+        self.assertEqual(detail["log"], "pipeline chatter\n")
+        self.assertNotIn("pipeline chatter", stdout.getvalue() + console.getvalue())
+        log = console.getvalue()
+        for text in ("POST /api/batches/action → 200", "▶ Single run · job 1/1: gap 16,", "✓ Single run · job 1/1: done in",
+                     "MANIQA 0.500 → runs/", "■ Single run: completed (1 jobs, 0 failed)",
+                     "POST /api/batches/preview → 400: Choose two sample images", "GET /api/runs/detail?run=missing → 404: Run not found"):
+            self.assertIn(text, log)
+        self.assertNotIn("GET /api/runs →", log)
+        self.assertNotIn("HTTP/1.1", log)
 
     def test_single_kind_validation(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -192,12 +215,45 @@ class RenderedRunsPageTests(unittest.TestCase):
             folder = make_run(root / "runs", "example", dict(SAMPLE_METRICS, inference_time=12.34), params=params)
             Image.new("RGB", (8, 8)).save(folder / "debug_crop_mask.png")
             dom = render(root / "runs", "/?run=example", project_root=root)
-        for text in ("1 of 1 runs", "pending review", "gap 30 · feather 15 · steps 20 · guidance 5 · seed 7",
+        for text in ("1 of 1 runs", "pending review", "gap 30 · feather 15 · steps 20 · cfg 5 · seed 7",
+                     'class="run-thumb" src="/api/runs/file?run=example&amp;name=output.png&amp;thumb=1"',
+                     'id="hero"', 'aria-pressed="true" title="output.png"', 'aria-pressed="false" title="debug_crop_mask.png"',
                      "MANIQA 0.600", "Rerun with these settings", 'href="/run?from=example"', 'href="/review?run=example"',
                      "Crop mask", "Before / after", "12.3 s", "12.50%", "Guidance scale", "quality_maniqa_tiles",
                      "&lt;b&gt;bold&lt;/b&gt;", 'href="/" aria-current="page"'):
             self.assertIn(text, dom)
         self.assertNotIn("<b>bold</b>", dom)
+        self.assertNotIn(">null<", dom.replace("\n", ""))
+
+    def test_compare_page_marks_best_and_worst(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = project(directory)
+            base = {"output": "x/output.png", "gap": 30, "feather": 15, "steps": 20, "seed": 7}
+            make_run(root / "runs", "a", {"quality_maniqa": 0.6, "quality_gap_left_delta_e76": 2.5, "inference_time": 10.0,
+                                          "quality_gap_left_gradient": 0.1, "quality_gap_left_gradient_excess": -0.01,
+                                          "quality_gap_right_gradient_excess": 0.02}, params=dict(base, batch_id="one"))
+            make_run(root / "runs", "b", {"quality_maniqa": 0.5, "quality_gap_left_delta_e76": 1.0, "inference_time": 10.0,
+                                          "quality_gap_left_gradient": 0.2, "quality_gap_left_gradient_excess": -0.001,
+                                          "quality_gap_right_gradient_excess": -0.03}, params=dict(base, feather=40, batch_id="two"))
+            dom = render(root / "runs", "/compare?run=a&run=b", project_root=root)
+        for text in ('<td class="best"><code>0.6</code></td><td class="worst"><code>0.5</code></td>',
+                     '<td class="worst"><code>2.5</code></td><td class="best"><code>1</code></td>',
+                     '<td><code>-0.01</code></td><td><code>-0.001</code></td>',  # both smoother than surroundings: no winner
+                     '<td class="worst"><code>0.02</code></td><td class="best"><code>-0.03</code></td>',
+                     "Best on 1 of 4 quality checks", "Best on 2 of 4 quality checks", "Settings that differ", "feather",
+                     "4 identical settings and run identifiers",
+                     '<tr class="differs"><th scope="row" title="quality_gap_left_gradient">',
+                     "Overall quality", "Gap seams", "Timing", 'src="/api/runs/file?run=a&amp;name=output.png"'):
+            self.assertIn(text, dom)
+        self.assertIn('<td><code>10</code></td><td><code>10</code></td>', dom)  # ties are not marked
+        self.assertLess(dom.index('title="batch_id"'), dom.index("Other metrics"))
+        self.assertGreater(dom.index('title="batch_id"'), dom.index("identical settings and run identifiers"))
+
+    def test_compare_page_needs_two_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = project(directory)
+            dom = render(root / "runs", "/compare?run=a", project_root=root)
+        self.assertIn("Tick 2–3 runs", dom)
 
     def test_run_page_loads_settings_from_previous_run(self):
         with tempfile.TemporaryDirectory() as directory:

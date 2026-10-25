@@ -121,7 +121,8 @@ class ReviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             client = Client(review_server(Path(directory)))
             try:
-                for page, script in (("/", "runs.js"), ("/run", "run.js"), ("/review", "review.js"), ("/batches", "batch.js")):
+                for page, script in (("/", "runs.js"), ("/run", "run.js"), ("/review", "review.js"), ("/batches", "batch.js"),
+                                     ("/compare", "compare.js")):
                     status, body = client.request("GET", page)
                     self.assertEqual(status, 200, page)
                     self.assertIn(client.server.token.encode(), body)

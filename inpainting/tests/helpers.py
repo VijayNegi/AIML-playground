@@ -96,7 +96,7 @@ def render(runs_dir, path="/", project_root=None):
             finally:
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):  # macOS: EPERM once the group has exited
                     pass
                 process.wait()
             dom = output.read_text()

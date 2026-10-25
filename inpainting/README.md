@@ -126,6 +126,15 @@ Opens **http://127.0.0.1:8765/** (local only). The header has four sections:
   prompt, height, and **Save canvas & mask** under Advanced), then **Run**. Status
   shows progress, the time estimate, errors, and links to the finished run.
 - **Review** (`/review`): rate unreviewed runs (details below).
+- **Compare** (`/compare`): tick 2–3 runs in the Runs list, then press **Compare**.
+  Images sit side by side (switch all columns between output, before/after and
+  model crop). Changed settings are listed first; run identifiers and identical
+  settings are folded away. Quality and timing rows mark the best value green and the worst red:
+  MANIQA higher is better; color mismatch, preservation error/changed pixels and
+  times lower is better. Extra edge strength counts only positive values (a visible
+  edge); values ≤ 0 (smoother than surroundings) are treated as equal. Each run
+  shows how many quality checks it wins. This is a per-metric guide, not a combined
+  score; judge the images yourself.
 - **Batches** (`/batches`): parameter sweeps, pause/resume, and history.
 
 **Rerun with these settings** on a run opens New run pre-filled with that run's
@@ -141,6 +150,14 @@ stop a run. UI runs use batch validation: inputs must be in `samples/`, the actu
 gap at most 224 px, and height 224–1024 px; use the CLI for anything else. They
 appear in Batch history as "Single run" entries. Folders in `runs/` without
 `params.json` (old manual outputs) are not listed.
+
+The server console stays short: one line per action (POST) or failed request with
+its reason, and one line when each job starts, finishes (time, MANIQA, folder) or
+fails, and when a batch ends. Page loads, polling and images are not logged. The
+detailed pipeline output of each UI/batch job is saved to `run.log` in its run folder
+(with the traceback on failure) and shown under **Pipeline log** on the run's
+details. CLI runs still print to the terminal. Model download progress bars and
+library warnings still appear in the console.
 
 ## Aim tracking
 

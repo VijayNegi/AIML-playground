@@ -1,17 +1,21 @@
 """Local, single-worker batches with durable history and conservative timing estimates."""
 
 import argparse
+from contextlib import redirect_stdout
 from copy import deepcopy
 from datetime import datetime
 import hashlib
+import io
 from itertools import product
 import json
 import math
 import os
 from pathlib import Path
 import statistics
+import sys
 import threading
 import time
+import traceback
 import uuid
 
 from PIL import Image
@@ -27,6 +31,11 @@ INFERENCE_MODULES = ("runner.py", "models.py", "canvas.py", "inpaint.py", "quali
 def software_signature():
     package = Path(__file__).resolve().parent
     return hashlib.sha256(b"".join((package / name).read_bytes() for name in INFERENCE_MODULES)).hexdigest()
+
+
+def log(text):
+    """One console line with local time; stderr so it is never captured into a run log."""
+    print(f"{datetime.now():%H:%M:%S}  {text}", file=sys.stderr, flush=True)
 
 
 def now():
@@ -323,10 +332,13 @@ class BatchManager:
                     if job is None:
                         batch.update(status="failed" if any(j["status"] == "failed" for j in batch["jobs"]) else "completed", ended_at=now())
                         self.save()
+                        failed = sum(j["status"] == "failed" for j in batch["jobs"])
+                        log(f"■ {batch['name']}: {batch['status']} ({len(batch['jobs'])} jobs, {failed} failed)")
                         return
                     if self.closing or batch["status"] == "pause_requested":
                         batch.update(status="paused", paused_at=now())
                         self.save()
+                        log(f"⏸ {batch['name']}: paused")
                         return
                     folder = self.root / "runs" / f"{batch['id']}_{job['id']}_attempt-{len(job['attempts']) + 1}"
                     attempt = {"run_dir": str(folder), "status": "running", "started_at": now()}
@@ -335,20 +347,41 @@ class BatchManager:
                     self.current_started = time.perf_counter()
                     self.save()
                 started = time.perf_counter()
+                p = job["params"]
+                label = f"{batch['name']} · job {batch['jobs'].index(job) + 1}/{len(batch['jobs'])}"
+                log(f"▶ {label}: gap {p.get('gap')}, feather {p.get('feather')}, steps {p.get('steps')}, "
+                    f"cfg {p.get('guidance_scale')}, seed {p.get('seed')}")
+                output = io.StringIO()
                 try:
                     if [file_hash(path) for path in job["params"]["images"]] != batch["input_hashes"]:
                         raise ValueError("Input files changed during the batch")
                     args = argparse.Namespace(**dict(job["params"], output=str(folder / "output.png"),
                                                     batch_id=batch["id"], configuration_id=job["id"], sweep=job["sweep"]))
-                    _, metrics = runner(args, resources=resources)
+                    # shortcut: redirect_stdout is process-wide, so server-thread prints during a job also land in its
+                    # run.log; switch the pipeline to the logging module if that matters.
+                    with redirect_stdout(output):
+                        _, metrics = runner(args, resources=resources)
                     result = {"status": "completed", "warnings": {key: metrics[key] for key in
                               ("quality_error", "quality_maniqa_error") if key in metrics}}
                     if metrics.get("aim_status") == "failed":
                         result["warnings"]["aim_status"] = "failed"
                 except Exception as error:
+                    output.write(traceback.format_exc())
                     result = {"status": "failed", "error": str(error)}
+                    metrics = {}
+                elapsed = time.perf_counter() - started
+                if folder.is_dir():
+                    (folder / "run.log").write_text(output.getvalue())
+                if result["status"] == "completed":
+                    maniqa = metrics.get("quality_maniqa")
+                    score = f", MANIQA {maniqa:.3f}" if isinstance(maniqa, (int, float)) else ""
+                    warned = f", warnings: {', '.join(result['warnings'])}" if result["warnings"] else ""
+                    log(f"✓ {label}: done in {elapsed:.1f}s{score}{warned} → runs/{folder.name}")
+                else:
+                    log(f"✗ {label}: failed after {elapsed:.1f}s: {result['error']}"
+                        + (f" (details: runs/{folder.name}/run.log)" if folder.is_dir() else ""))
                 with self.lock:
-                    attempt.update(result, ended_at=now(), elapsed_seconds=time.perf_counter() - started)
+                    attempt.update(result, ended_at=now(), elapsed_seconds=elapsed)
                     job["status"] = result["status"]
                     batch["elapsed_seconds"] += attempt["elapsed_seconds"]
                     self.current_started = None
@@ -356,6 +389,7 @@ class BatchManager:
         except Exception as error:
             with self.lock:
                 batch.update(status="interrupted", error=str(error))
+                log(f"✗ {batch['name']}: interrupted: {error}")
                 for job in batch["jobs"]:
                     if job["status"] == "running":
                         job["status"] = "interrupted"
@@ -368,6 +402,6 @@ class BatchManager:
         with self.lock:
             self.closing = True
         if self.thread and self.thread.is_alive():
-            print("Waiting for the current batch job to finish before shutdown...")
+            log("Waiting for the current batch job to finish before shutdown...")
             self.thread.join()
         self.process_lock.close()

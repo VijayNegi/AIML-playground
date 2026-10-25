@@ -14,7 +14,10 @@
     <aside class="run-list-panel" aria-label="Run history">
       <div class="panel-head">
         <h1>Runs</h1>
-        <a class="button primary" href="/run">New run</a>
+        <div class="actions">
+          <a id="compare-link" class="button" href="/compare" hidden>Compare</a>
+          <a class="button primary" href="/run">New run</a>
+        </div>
       </div>
       <label class="filter">Show
         <select id="filter">

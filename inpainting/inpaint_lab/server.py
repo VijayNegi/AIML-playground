@@ -9,11 +9,12 @@ from urllib.parse import urlsplit
 import webbrowser
 
 from inpaint_lab import batch_api, review_api, runs_api
+from inpaint_lab.batches import log
 from inpaint_lab.config import ROOT, RUNS_DIR, STATIC_DIR
 from inpaint_lab.tracking import sync_saved_reviews
 
 
-PAGES = {"/": "runs.html", "/run": "run.html", "/review": "review.html", "/batches": "batch.html"}
+PAGES = {"/": "runs.html", "/run": "run.html", "/review": "review.html", "/batches": "batch.html", "/compare": "compare.html"}
 STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 ROUTES = (runs_api, review_api, batch_api)
 MAX_JSON_BYTES = 131072
@@ -36,7 +37,24 @@ class ReviewHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_json(self, data, status=200):
+        if status >= 400:
+            self.error_detail = data.get("error")
         self.respond(json.dumps(data, allow_nan=False).encode(), "application/json; charset=utf-8", status)
+
+    def send_error(self, code, message=None, explain=None):
+        self.error_detail = message
+        super().send_error(code, message, explain)
+
+    def log_request(self, code="-", size="-"):
+        # Successful GETs are page loads, polling and images: noise. Show actions and failures with their reason.
+        code = int(code) if str(code).isdigit() else 0
+        if (self.command == "GET" and code < 400) or self.path == "/favicon.ico":
+            return
+        detail = getattr(self, "error_detail", None)
+        log(f"{self.command} {self.path} → {code}" + (f": {detail}" if detail else ""))
+
+    def log_message(self, format, *args):
+        pass  # Only send_error's duplicate "code 404" line and timeouts arrive here; log_request covers requests.
 
     def read_json(self):
         """CSRF-checked JSON object body. Sends 403 and returns None for a bad token."""

@@ -1,6 +1,8 @@
 """Run history JSON routes: list all runs, run details with debug images, and rerun settings."""
 
 from datetime import datetime
+from functools import lru_cache
+import io
 import json
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -12,8 +14,21 @@ IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 # Known files first, in pipeline order; anything else follows alphabetically.
 IMAGE_ORDER = ("output.png", "output_comparison.png", "collage_canvas.png", "collage_mask.png",
                "debug_crop_image.png", "debug_crop_mask.png", "debug_crop_result.png", "quality_context.png")
+THUMB_SIZE = 360
 RERUN_KEYS = ("model", "prompt", "negative_prompt", "height", "gap", "feather", "steps",
               "guidance_scale", "seed", "save_intermediate")
+
+
+@lru_cache(maxsize=256)
+def thumbnail(path, mtime):
+    """Small JPEG for list and strip previews; cached per file version (mtime)."""
+    from PIL import Image
+    with Image.open(path) as image:
+        image = image.convert("RGB")
+        image.thumbnail((THUMB_SIZE, THUMB_SIZE))
+        buffer = io.BytesIO()
+        image.save(buffer, "JPEG", quality=85)
+    return buffer.getvalue()
 
 
 def read_json(path):
@@ -64,7 +79,9 @@ def summary(folder, attempt):
     params = read_json(folder / "params.json") or {}
     metrics = read_json(folder / "metrics.json") or {}
     created = datetime.fromtimestamp((folder / "params.json").stat().st_mtime).astimezone()
+    output = Path(str(params.get("output", "output.png"))).name
     return {"name": folder.name, "created": created.isoformat(), "status": status(folder, params, attempt),
+            "output": output if (folder / output).is_file() else None,
             "params": {key: params.get(key) for key in ("model", "gap", "feather", "steps", "guidance_scale", "seed")},
             "maniqa": metrics.get("quality_maniqa"), "inference_time": metrics.get("inference_time"),
             "batch": attempt}
@@ -114,9 +131,11 @@ def get_route(handler, address):
         images.sort(key=lambda name: (IMAGE_ORDER.index(name) if name in IMAGE_ORDER else len(IMAGE_ORDER), name))
         steps = folder / "intermediate_steps"
         settings, warnings = rerun_settings(handler.server.project_root, params)
+        log = folder / "run.log"
         handler.send_json(dict(summary(folder, attempt), params=params, metrics=read_json(folder / "metrics.json"),
                                review=read_json(folder / "review.json"), images=images,
                                step_images=len(list(steps.glob("*.png"))) if steps.is_dir() else 0,
+                               log=log.read_text(errors="replace")[-50000:] if log.is_file() else None,
                                rerun=settings, rerun_warnings=warnings))
     elif address.path == "/api/runs/file":
         folder = run_dir(handler, query.get("run", [""])[0])
@@ -124,6 +143,8 @@ def get_route(handler, address):
         path = folder / name if folder and name and "/" not in name and "\\" not in name else None
         if path is None or path.suffix.lower() not in IMAGE_TYPES or not path.is_file():
             handler.send_error(404)
+        elif query.get("thumb"):
+            handler.respond(thumbnail(str(path), path.stat().st_mtime_ns), "image/jpeg")
         else:
             handler.respond(path.read_bytes(), IMAGE_TYPES[path.suffix.lower()])
     else:

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="__TOKEN__">
+  <title>Compare runs · Inpaint Lab</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="compare-page">
+  <header class="app-header"><a class="brand" href="/">Inpaint Lab</a><nav aria-label="Main"><a href="/">Runs</a><a href="/run">New run</a><a href="/review">Review</a><a href="/batches">Batches</a></nav></header>
+  <p id="message" role="status" aria-live="polite"></p>
+  <div class="panel-head">
+    <h1>Compare runs</h1>
+    <div class="segmented" id="view" role="group" aria-label="Image shown for every run">
+      <button type="button" data-image="output" aria-pressed="true">Output</button>
+      <button type="button" data-image="output_comparison.png" aria-pressed="false">Before / after</button>
+      <button type="button" data-image="debug_crop_result.png" aria-pressed="false">Model crop</button>
+    </div>
+  </div>
+  <p class="muted legend"><span class="best">Green</span> = best, <span class="worst">red</span> = worst for metrics with a known direction (shown as ↑ higher or ↓ lower is better). <span class="differs">Tinted rows</span> differ but have no better/worse.</p>
+  <main id="compare"><p class="muted">Loading…</p></main>
+  <script type="module" src="/static/compare.js"></script>
+</body>
+</html>
