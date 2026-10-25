@@ -96,10 +96,14 @@ def preview_batch(root, definition):
         with Image.open(path) as image:
             images.append(image.convert("RGB"))
     baseline = definition.get("baseline", {})
-    if not isinstance(baseline, dict) or set(baseline) - (set(PARAMETERS) | {"model", "prompt", "negative_prompt", "height", "save_intermediate"}):
+    if not isinstance(baseline, dict) or set(baseline) - (set(PARAMETERS) | {"model", "prompt", "negative_prompt", "height",
+                                                                            "save_intermediate", "save_steps", "save_every"}):
         raise ValueError("Unsupported baseline parameters")
-    if type(baseline.get("save_intermediate", False)) is not bool:
-        raise ValueError("save_intermediate must be true or false")
+    for key in ("save_intermediate", "save_steps"):
+        if type(baseline.get(key, False)) is not bool:
+            raise ValueError(f"{key} must be true or false")
+    if type(baseline.get("save_every", 1)) is not int or not 1 <= baseline.get("save_every", 1) <= 1000:
+        raise ValueError("save_every must be a whole number between 1 and 1000")
     defaults = vars(parse_collage_args(["--images", *map(str, paths)]))
     defaults.update(baseline)
     for key in PARAMETERS:

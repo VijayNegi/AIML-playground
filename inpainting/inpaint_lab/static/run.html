@@ -35,6 +35,11 @@
         <label>Negative prompt <textarea name="negative_prompt" rows="2" maxlength="10000"></textarea></label>
         <label>Height <input type="number" name="height" min="224" max="1024" placeholder="Automatic (224–1024)"></label>
         <label class="check"><input type="checkbox" name="save_intermediate"> Save canvas &amp; mask debug images</label>
+        <div class="inline steps-option">
+          <label class="check"><input type="checkbox" name="save_steps"> Save denoising steps</label>
+          <label>every <input type="number" name="save_every" min="1" max="1000" step="1" value="5" aria-label="Save every N steps"> steps</label>
+        </div>
+        <small class="muted">Each saved step is decoded to an image, which slows the run; time estimates do not include this.</small>
       </details>
       <div class="actions">
         <button type="submit" class="primary" id="run-button">Run</button>

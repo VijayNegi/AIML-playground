@@ -97,7 +97,7 @@ class RunsApiTests(unittest.TestCase):
                 detail = json.loads(body)
                 self.assertEqual(detail["images"], ["output.png", "output_comparison.png", "collage_mask.png",
                                                     "debug_crop_result.png", "zz_extra.png"])
-                self.assertEqual(detail["step_images"], 1)
+                self.assertEqual(detail["step_images"], ["step_0000.png"])
                 self.assertEqual(detail["metrics"]["quality_maniqa"], 0.6)
                 self.assertIsNone(detail["review"])
                 status, body = client.request("GET", "/api/runs/file?run=example&name=debug_crop_result.png")
@@ -106,9 +106,16 @@ class RunsApiTests(unittest.TestCase):
                 status, body = client.request("GET", "/api/runs/file?run=example&name=output_comparison.png&thumb=1")
                 self.assertEqual(status, 200)
                 self.assertTrue(body.startswith(b"\xff\xd8"))  # JPEG thumbnail
+                self.assertEqual(client.request("GET", "/api/runs/file?run=example&name=intermediate_steps%2Fstep_0000.png")[0], 200)
+                (folder / "intermediate_steps" / "deeper").mkdir()
+                Image.new("RGB", (4, 4)).save(folder / "intermediate_steps" / "deeper" / "x.png")
                 for path in ("/api/runs/file?run=example&name=notes.txt", "/api/runs/file?run=example&name=../secret.png",
                              "/api/runs/file?run=..&name=secret.png", "/api/runs/file?run=example%2F..&name=secret.png",
-                             "/api/runs/file?run=example&name=intermediate_steps/step_0000.png",
+                             "/api/runs/file?run=example&name=intermediate_steps/../../secret.png",
+                             "/api/runs/file?run=example&name=intermediate_steps/..",
+                             "/api/runs/file?run=example&name=intermediate_steps/",
+                             "/api/runs/file?run=example&name=intermediate_steps/deeper/x.png",
+                             "/api/runs/file?run=example&name=deeper/x.png",
                              "/api/runs/file?run=missing&name=output.png"):
                     self.assertEqual(client.request("GET", path)[0], 404, path)
                 for name in ("..", "missing", "example/..", ""):
@@ -153,7 +160,7 @@ class RunsApiTests(unittest.TestCase):
             root = project(directory)
             definition = {"name": "Single run", "kind": "single", "mode": "one_at_a_time", "sweeps": {},
                           "images": ["samples/left.png", "samples/right.png"],
-                          "baseline": {"gap": 16, "save_intermediate": True}}
+                          "baseline": {"gap": 16, "save_intermediate": True, "save_steps": True, "save_every": 3}}
             client = server(root)
             try:
                 token = client.server.token
@@ -163,6 +170,9 @@ class RunsApiTests(unittest.TestCase):
                 checked = json.loads(body)
                 self.assertEqual(len(checked["jobs"]), 1)
                 self.assertTrue(checked["jobs"][0]["params"]["save_intermediate"])
+                self.assertTrue(checked["jobs"][0]["params"]["save_steps"])
+                self.assertEqual(checked["jobs"][0]["params"]["save_every"], 3)
+                self.assertIsNone(checked["jobs"][0]["params"]["steps_dir"])  # resolved to <run>/intermediate_steps per run
                 status, body = client.request("POST", "/api/batches/create",
                                               {"definition": definition, "expected": checked["expected"]}, token)
                 self.assertEqual(status, 200)
@@ -198,7 +208,9 @@ class RunsApiTests(unittest.TestCase):
             root = project(directory)
             base = {"images": ["samples/left.png", "samples/right.png"], "baseline": {"gap": 16}}
             for invalid in ({"kind": "single", "sweeps": {"gap": [8, 16]}}, {"kind": "other"},
-                            {"baseline": {"gap": 16, "save_intermediate": "yes"}}):
+                            {"baseline": {"gap": 16, "save_intermediate": "yes"}}, {"baseline": {"save_steps": 1}},
+                            {"baseline": {"save_every": 0}}, {"baseline": {"save_every": True}},
+                            {"baseline": {"save_every": "5"}}, {"baseline": {"steps_dir": "/tmp"}}):
                 with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                     preview_batch(root, dict(deepcopy(base), **invalid))
             self.assertEqual(preview_batch(root, dict(base, kind="single"))["kind"], "single")
@@ -224,6 +236,19 @@ class RenderedRunsPageTests(unittest.TestCase):
             self.assertIn(text, dom)
         self.assertNotIn("<b>bold</b>", dom)
         self.assertNotIn(">null<", dom.replace("\n", ""))
+
+    def test_step_viewer_shows_last_step(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = project(directory)
+            folder = make_run(root / "runs", "steps", params={"output": "x/output.png", "steps": 10})
+            (folder / "intermediate_steps").mkdir()
+            for name in ("step_0000_t999.png", "step_0004_t500.png"):
+                Image.new("RGB", (8, 8)).save(folder / "intermediate_steps" / name)
+            dom = render(root / "runs", "/?run=steps", project_root=root)
+        for text in ("Denoising steps (2 saved)", "Step 5 of 10 · timestep 500", 'aria-label="Denoising step"',
+                     'src="/api/runs/file?run=steps&amp;name=intermediate_steps%2Fstep_0004_t500.png"', "▶ Play"):
+            self.assertIn(text, dom)
+        self.assertNotIn("Tip: under Advanced", dom)
 
     def test_compare_page_marks_best_and_worst(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -261,7 +286,7 @@ class RenderedRunsPageTests(unittest.TestCase):
             make_run(root / "runs", "previous", params={"output": "x", "gap": 30, "images": ["./left.png", "./right.png"]})
             dom = render(root / "runs", "/run?from=previous", project_root=root)
         for text in ("Settings loaded from", 'href="/?run=previous"', "matched by filename",
-                     'value="samples/left.png"', "Choose an image…", 'name="save_intermediate"',
+                     'value="samples/left.png"', "Choose an image…", 'name="save_intermediate"', 'name="save_steps"', 'name="save_every"',
                      'href="/run" aria-current="page"'):
             self.assertIn(text, dom)
 

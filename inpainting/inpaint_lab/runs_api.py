@@ -16,7 +16,7 @@ IMAGE_ORDER = ("output.png", "output_comparison.png", "collage_canvas.png", "col
                "debug_crop_image.png", "debug_crop_mask.png", "debug_crop_result.png", "quality_context.png")
 THUMB_SIZE = 360
 RERUN_KEYS = ("model", "prompt", "negative_prompt", "height", "gap", "feather", "steps",
-              "guidance_scale", "seed", "save_intermediate")
+              "guidance_scale", "seed", "save_intermediate", "save_steps", "save_every")
 
 
 @lru_cache(maxsize=256)
@@ -134,13 +134,17 @@ def get_route(handler, address):
         log = folder / "run.log"
         handler.send_json(dict(summary(folder, attempt), params=params, metrics=read_json(folder / "metrics.json"),
                                review=read_json(folder / "review.json"), images=images,
-                               step_images=len(list(steps.glob("*.png"))) if steps.is_dir() else 0,
+                               step_images=sorted(path.name for path in steps.glob("*.png")) if steps.is_dir() else [],
                                log=log.read_text(errors="replace")[-50000:] if log.is_file() else None,
                                rerun=settings, rerun_warnings=warnings))
     elif address.path == "/api/runs/file":
         folder = run_dir(handler, query.get("run", [""])[0])
         name = query.get("name", [""])[0]
-        path = folder / name if folder and name and "/" not in name and "\\" not in name else None
+        # Run-folder files, or one level into intermediate_steps/ for denoising-step images.
+        steps_prefix = "intermediate_steps/"
+        base, rest = ("intermediate_steps", name.removeprefix(steps_prefix)) if name.startswith(steps_prefix) else ("", name)
+        safe = rest and "/" not in rest and "\\" not in rest and rest not in (".", "..")
+        path = folder / base / rest if folder and safe else None
         if path is None or path.suffix.lower() not in IMAGE_TYPES or not path.is_file():
             handler.send_error(404)
         elif query.get("thumb"):

@@ -214,3 +214,10 @@ td.best,.legend .best {background:#dcf3e3;color:#1e6b34;font-weight:600}
 td.worst,.legend .worst {background:#fde2e4;color:#9d1728}
 tr.differs,.legend .differs {background:#fff7e0}
 @media (max-width:900px) {.compare-grid {grid-template-columns:1fr}}
+.steps-viewer .hero {margin-top:0}
+.steps-viewer .hero img {max-height:56vh}
+.steps-controls {display:flex;gap:8px;align-items:center;margin-top:10px}
+.steps-controls input[type=range] {flex:1;accent-color:var(--accent)}
+.steps-controls button {min-width:40px}
+.steps-option {align-items:center;gap:16px}
+.steps-option input[type=number] {width:80px}

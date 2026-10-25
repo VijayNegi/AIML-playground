@@ -122,9 +122,15 @@ def create_step_callback(output_dir: str = "intermediate_steps", save_every: int
             # Get the VAE scaling factor
             scaling_factor = pipe.vae.config.scaling_factor
             scaled_latents = latents / scaling_factor
-            
+            # Same as the pipeline's final decode: the SDXL VAE overflows in float16 (black/NaN images), so upcast briefly.
+            upcast = pipe.vae.dtype == torch.float16 and getattr(pipe.vae.config, "force_upcast", False)
+            if upcast:
+                pipe.vae.to(dtype=torch.float32)
+
             # Decode to image
-            decoded = pipe.vae.decode(scaled_latents, return_dict=False)[0]
+            decoded = pipe.vae.decode(scaled_latents.to(pipe.vae.dtype), return_dict=False)[0]
+            if upcast:
+                pipe.vae.to(dtype=torch.float16)
             
             # Convert to PIL Image
             # Output is in range [-1, 1], convert to [0, 255]
@@ -132,11 +138,12 @@ def create_step_callback(output_dir: str = "intermediate_steps", save_every: int
             decoded = decoded.cpu().permute(0, 2, 3, 1).numpy()
             decoded = (decoded * 255).round().astype(np.uint8)
             
-            # Save the image
+            # Save the image (timestep is a 0-d tensor; int() keeps the file name clean)
             for i, img_array in enumerate(decoded):
                 img = Image.fromarray(img_array)
-                img.save(os.path.join(output_dir, f"step_{step:04d}_t{timestep}.png"))
-                print(f"  Saved intermediate: step_{step:04d}_t{timestep}.png")
+                name = f"step_{step:04d}_t{int(timestep)}.png"
+                img.save(os.path.join(output_dir, name))
+                print(f"  Saved intermediate: {name}")
         
         return callback_kwargs
     

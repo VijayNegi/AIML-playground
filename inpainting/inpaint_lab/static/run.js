@@ -22,6 +22,8 @@ function apply(settings) {
   }
   if ('height' in settings) form.elements.height.value = settings.height ?? '';
   if ('save_intermediate' in settings) form.elements.save_intermediate.checked = Boolean(settings.save_intermediate);
+  if ('save_steps' in settings) form.elements.save_steps.checked = Boolean(settings.save_steps);
+  if (settings.save_every) form.elements.save_every.value = settings.save_every;
   if (Array.isArray(settings.images)) {
     ['left', 'right'].forEach((side, index) => {
       form.elements[side].value = settings.images[index] && catalog.images.includes(settings.images[index]) ? settings.images[index] : '';
@@ -33,6 +35,7 @@ function apply(settings) {
 function definition() {
   const baseline = {model: form.elements.model.value, prompt: form.elements.prompt.value,
     negative_prompt: form.elements.negative_prompt.value, save_intermediate: form.elements.save_intermediate.checked,
+    save_steps: form.elements.save_steps.checked, save_every: Number(form.elements.save_every.value),
     height: form.elements.height.value ? Number(form.elements.height.value) : null};
   for (const key of NUMBERS) baseline[key] = Number(form.elements[key].value);
   return {name: `Single run ${new Date().toLocaleString()}`, kind: 'single', mode: 'one_at_a_time', sweeps: {},
@@ -97,7 +100,12 @@ form.addEventListener('submit', async event => {
 
 for (const side of ['left', 'right']) form.elements[side].addEventListener('change', () => preview(side));
 $('random-seed').addEventListener('click', () => { form.elements.seed.value = Math.floor(Math.random() * 2 ** 32); });
-$('reset').addEventListener('click', () => { apply(catalog.defaults); form.elements.height.value = ''; form.elements.save_intermediate.checked = false; });
+$('reset').addEventListener('click', () => {
+  apply({...catalog.defaults, save_every: 5});
+  form.elements.height.value = '';
+  form.elements.save_intermediate.checked = false;
+  form.elements.save_steps.checked = false;
+});
 
 async function initialize() {
   catalog = await api('/api/batches/catalog');
@@ -107,7 +115,7 @@ async function initialize() {
       ...catalog.images.map(name => element('option', {value: name, text: name})));
   }
   for (const name of catalog.models) form.elements.model.append(element('option', {value: name, text: name}));
-  apply({...catalog.defaults, images: catalog.images.slice(0, 2)});
+  apply({...catalog.defaults, save_every: 5, images: catalog.images.slice(0, 2)});
 
   const query = new URLSearchParams(location.search);
   if (query.get('from')) {

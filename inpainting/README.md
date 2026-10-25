@@ -120,10 +120,12 @@ Opens **http://127.0.0.1:8765/** (local only). The header has four sections:
   run shows key numbers, all saved images (output, before/after, crop sent to the
   model, crop mask, model output crop, and canvas/mask when saved), every setting,
   every metric (tile lists under expandable sections), any human review, and the
-  batch it came from. Running entries refresh automatically.
+  batch it came from. Running entries refresh automatically. Runs with saved
+  denoising steps get a **Denoising steps** viewer: slider, previous/next, and Play.
 - **New run** (`/run`): pick inputs from `samples/`, edit the prompt and settings
   (gap, feather, steps, guidance, seed with a **Random** button; model, negative
-  prompt, height, and **Save canvas & mask** under Advanced), then **Run**. Status
+  prompt, height, **Save canvas & mask**, and **Save denoising steps every N steps**
+  under Advanced), then **Run**. Status
   shows progress, the time estimate, errors, and links to the finished run.
 - **Review** (`/review`): rate unreviewed runs (details below).
 - **Compare** (`/compare`): tick 2–3 runs in the Runs list, then press **Compare**.

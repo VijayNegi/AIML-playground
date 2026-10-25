@@ -11,6 +11,7 @@ const SETTING_LABELS = {
   images: 'Input images', prompt: 'Prompt', negative_prompt: 'Negative prompt', model: 'Model', model_id: 'Model ID',
   gap: 'Gap (px)', feather: 'Feather (px)', steps: 'Steps', guidance_scale: 'Guidance scale', seed: 'Seed',
   strength: 'Strength', height: 'Height', max_crop_size: 'Max crop size', save_intermediate: 'Save canvas & mask',
+  save_steps: 'Save denoising steps', save_every: 'Save every N steps',
 };
 let runs = [];
 let selected = new URLSearchParams(location.search).get('run');
@@ -89,6 +90,46 @@ function imageStrip(run) {
   return run.images.length ? strip : null;
 }
 
+// Scrub through saved denoising steps (intermediate_steps/step_0005_t981.png).
+function stepViewer(run) {
+  const steps = run.step_images;
+  if (!steps.length) return null;
+  const image = element('img', {alt: 'Denoising step'});
+  const caption = element('span');
+  const slider = element('input', {type: 'range', min: 0, max: steps.length - 1, step: 1, 'aria-label': 'Denoising step'});
+  const play = element('button', {type: 'button', 'aria-pressed': 'false', text: '▶ Play'});
+  const go = index => {
+    const name = steps[Math.max(0, Math.min(steps.length - 1, index))];
+    const match = /^step_(\d+)_t(\d+)/.exec(name);
+    slider.value = steps.indexOf(name);
+    image.src = fileUrl(run.name, `intermediate_steps/${name}`);
+    caption.textContent = match ? `Step ${Number(match[1]) + 1} of ${run.params.steps ?? '?'} · timestep ${match[2]}` : name;
+  };
+  let timer = null;
+  const stop = () => { clearInterval(timer); timer = null; play.textContent = '▶ Play'; play.setAttribute('aria-pressed', 'false'); };
+  play.addEventListener('click', () => {
+    if (timer) return stop();
+    if (Number(slider.value) === steps.length - 1) go(0);
+    play.textContent = '⏸ Pause';
+    play.setAttribute('aria-pressed', 'true');
+    timer = setInterval(() => {
+      // Stop when finished or when another run's details replaced this viewer.
+      if (!image.isConnected || Number(slider.value) >= steps.length - 1) return stop();
+      go(Number(slider.value) + 1);
+    }, 400);
+  });
+  slider.addEventListener('input', () => { stop(); go(Number(slider.value)); });
+  const previous = element('button', {type: 'button', 'aria-label': 'Previous step', text: '‹'});
+  const next = element('button', {type: 'button', 'aria-label': 'Next step', text: '›'});
+  previous.addEventListener('click', () => { stop(); go(Number(slider.value) - 1); });
+  next.addEventListener('click', () => { stop(); go(Number(slider.value) + 1); });
+  go(steps.length - 1);
+  return element('section', {class: 'steps-viewer'},
+    element('h3', {text: `Denoising steps (${steps.length} saved)`}),
+    element('figure', {class: 'hero'}, image, element('figcaption', {}, caption)),
+    element('div', {class: 'steps-controls'}, play, previous, slider, next));
+}
+
 function renderDetail(run) {
   const metrics = run.metrics || {};
   const scalars = Object.entries(metrics).filter(([, value]) => value === null || typeof value !== 'object');
@@ -120,8 +161,8 @@ function renderDetail(run) {
       run.review.notes ? element('p', {text: run.review.notes}) : null) : null,
     element('h3', {text: 'Debug images'}),
     imageStrip(run),
-    run.step_images ? element('p', {class: 'muted', text: `${run.step_images} denoising-step images saved in intermediate_steps/.`}) : null,
-    !run.images.includes('collage_canvas.png') ? element('p', {class: 'muted', text: 'Tip: enable “Save canvas & mask” under Advanced when running to keep the input canvas and blend mask.'}) : null,
+    stepViewer(run),
+    !run.images.includes('collage_canvas.png') && !run.step_images.length ? element('p', {class: 'muted', text: 'Tip: under Advanced in New run, enable “Save canvas & mask” or “Save denoising steps” to keep more debug images.'}) : null,
     element('div', {class: 'two-col'},
       element('section', {}, element('h3', {text: 'Settings'}), keyValueTable(params, SETTING_LABELS)),
       element('section', {}, element('h3', {text: 'Metrics'}),
